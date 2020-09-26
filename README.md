@@ -1,2 +1,2 @@
-# robot_learning_experience_replay
+# robot-learning-replay
 A survey of methods in experience replay applied to robot learning
