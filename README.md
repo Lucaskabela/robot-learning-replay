@@ -19,3 +19,10 @@ See setup.sh to get started and install requirements for the project
  - [ ] Fill in Boilerplate code for training, models
  - [ ] Get environments setup and random policy working
  - [ ] Scope out future work for project
+
+ ## Using in Colab
+import os
+os.environ['USER'] = <name>
+os.environ['PASS'] = <password>
+os.environ['REPO'] = <repo>
+!git clone https://$USER:$PASS@github.com/$USER/$REPO.git

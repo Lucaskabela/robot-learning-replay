@@ -31,8 +31,30 @@ def _parse_args():
         )
     """
     parser = argparse.ArgumentParser(
-        description='Arguments for Experience Replay project'
+        description="Arguments for Experience Replay project"
     )
+    # Model related arguments here
+
+    # Training related arguments here
+    parser.add_argument(
+        "--log_dir",
+        type=str,
+        default="./logs/",
+        help="Name of directory to log for tensorboard",
+    )
+    parser.add_argument(
+        "-n",
+        "--num_epoch",
+        type=int,
+        default=50,
+    )
+    parser.add_argument(
+        "-lr",
+        "--learning_rate",
+        type=float,
+        default=1e-3,
+    )
+    parser.add_argument("-c", "--continue_training", action="store_true")
 
     args = parser.parse_args()
     return args
@@ -42,5 +64,5 @@ def main():
     return None
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
