@@ -37,24 +37,12 @@ def _parse_args():
 
     # Training related arguments here
     parser.add_argument(
-        "--log_dir",
-        type=str,
-        default="./logs/",
-        help="Name of directory to log for tensorboard",
+        "--log_dir", type=str, default="./logs/", help="Dir of logs for tb"
     )
-    parser.add_argument(
-        "-n",
-        "--num_epoch",
-        type=int,
-        default=50,
-    )
-    parser.add_argument(
-        "-lr",
-        "--learning_rate",
-        type=float,
-        default=1e-3,
-    )
+    parser.add_argument("-n", "--num_episodes", type=int, default=50)
+    parser.add_argument("-lr", "--learning_rate", type=float, default=1e-3)
     parser.add_argument("-c", "--continue_training", action="store_true")
+    parser.add_argument("--batch_size", type=int, default=2, help="batch size")
 
     args = parser.parse_args()
     return args

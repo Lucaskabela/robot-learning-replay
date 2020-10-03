@@ -12,7 +12,8 @@ This project uses conda to manage packages and requirements - however pip can al
 
 + [pip](https://pip.pypa.io/en/stable/installing/)
 
-See setup.sh to get started and install requirements for the project
+See `setup.sh` to get started and install requirements for the project.  
+Note, conda will not have gym installed - this must be done through pip
 
 ## TODO
 

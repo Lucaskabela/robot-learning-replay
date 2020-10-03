@@ -5,12 +5,67 @@ AUTHOR: Lucas Kabela
 
 PURPOSE: This file defines the code for training the neural networks in pytorch
 """
+import gym
 from .models import save_model, load_model
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torch.utils.tensorboard as tb
 import torchvision.transforms.functional as TF
+
+env = gym.make("CartPole-v1")
+env.seed(1)
+torch.manual_seed(1)
+
+
+def predict(state):
+    return torch.zeros(1)
+
+
+def train(args):
+
+    scores = []
+    replay = []
+    for episode in range(args.num_episodes):
+        # Reset environment and record the starting state
+        state = env.reset()
+
+        for time in range(1000):
+            action = predict(state)
+
+            # Uncomment to render the visual state in a window
+            # env.render()
+
+            # Step through environment using chosen action
+            next_state, reward, done, _ = env.step(action.item())
+            replay.append((state, action, reward))
+            state = next_state
+
+            # Save reward
+            policy.rewards.append(reward)
+            if done:
+                break
+
+        # update_policy(replay)
+        replay = []
+        # Calculate score to determine when the environment has been solved
+        scores.append(time)
+        mean_score = np.mean(scores[-100:])
+
+        if episode % 50 == 0:
+            print(
+                "Episode {}\tAverage length (last 100 episodes): {:.2f}".format(
+                    episode, mean_score
+                )
+            )
+
+        if mean_score > env.spec.reward_threshold:
+            print(
+                "Solved after {} episodes! Running average is now {}. Last episode ran to {} time steps.".format(
+                    episode, mean_score, time
+                )
+            )
+            break
 
 
 def train(args):
