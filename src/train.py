@@ -88,7 +88,7 @@ def update_policy(replay, policy, value, optimizer, val_optimizer, gamma=0.99):
 
 def train(args):
     print("Starting training!")
-    env = gym.make("FetchReach-v1")
+    env = gym.make("CartPole-v1")
     env.seed(1)
     torch.manual_seed(1)
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
