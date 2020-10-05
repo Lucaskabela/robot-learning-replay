@@ -22,7 +22,7 @@ Note, conda will not have gym installed - this must be done through pip
  - [x] Fill in Boilerplate code for training, models
  - [x] Get environments setup and random policy working
  - [x] Scope out future work for project
- - [ ] Get DDPG model set up
+ - [ ] Get SAC model set up
  - [ ] Get experience replay base versions (HER + PER)
  - [ ] Run some baselines
  
