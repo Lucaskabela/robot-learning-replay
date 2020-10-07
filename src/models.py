@@ -13,6 +13,93 @@ import torch.nn as nn
 from torch.distributions import Categorical
 
 
+class SAC(nn.Module):
+    """
+    This network is a SAC network from
+       > Soft Actor-Critic Algorithms and Applications, Haarnoja et al 2018
+
+    Tricks include dual Q networks, adjusting entropy, and gumbel softmax for
+    discrete
+    """
+
+    def __init__(self, env, target_entropy_ratio=0.95):
+        super(SAC, self).__init__()
+        self.policy = Policy(env)
+        self.soft_q1 = SoftQNetwork(env)
+        self.soft_q2 = SoftQNetwork(env)
+        self.tgt_q1 = SoftQNetwork(env).eval()
+        self.tgt_q2 = SoftQNetwork(env).eval()
+
+    def _freeze_tgt_networks(self):
+        """
+        Copy soft q networks into target q networks, and freeze parameters
+        for training stability
+        """
+        q1 = zip(self.tgt_q1.parameters(), self.soft_q1.parameters())
+        q2 = zip(self.tgt_q2.parameters(), self.soft_q2.parameters())
+
+        # Copy parameters
+        for target_param, param in q1:
+            target_param.data.copy_(param.data)
+        for target_param, param in q2:
+            target_param.data.copy_(param.data)
+
+        # Freeze gradients
+        for param in self.tgt_q1.parameters():
+            param.requires_grad = False
+        for param in self.tgt_q2.parameters():
+            param.requires_grad = False
+
+
+class SoftQNetwork(nn.Module):
+    """
+    Given an environment with |S| state dim and |A| actions, initialize
+    a FFN with 2 hidden layers, and input size |S| + |A|.  Output a single
+    Q value
+    """
+
+    def __init__(self, env, num_hidden=128, dropout=0.0):
+        super(SoftQNetwork, self).__init__()
+        self.state_space = env.observation_space.shape[0]
+        self.action_space = env.action_space.n
+
+        self.l1 = nn.Linear(self.state_space + self.action_space, num_hidden)
+        self.l2 = nn.Linear(num_hidden, num_hidden)
+        self.l3 = nn.Linear(num_hidden, 1)
+
+        self.ffn = nn.Sequential(
+            self.l1,
+            nn.Dropout(p=dropout),
+            nn.ReLU(),
+            self.l2,
+            nn.Dropout(p=dropout),
+            nn.ReLU(),
+            self.l3,
+        )
+        self.init_weights()
+
+    def init_weights(self):
+        """
+        Initialize weights with xaiver uniform, and
+        fill bias with 1 over n
+        """
+        over_n = 1 / (self.state_space + self.action_space)
+        nn.init.xavier_uniform_(self.l1.weight)
+        self.l1.bias.data.fill_(over_n)
+        nn.init.xavier_uniform_(self.l2.weight)
+        self.l2.bias.data.fill_(over_n)
+        nn.init.xavier_uniform_(self.l3.weight)
+        self.l3.bias.data.fill_(over_n)
+
+    def forward(self, state, action):
+        """
+        Given the state and action, produce a Q value
+        """
+        q_in = torch.cat([state, action], 1)
+        return self.ffn(q_in).view(-1)
+
+class Actor(nn.Module):
+    
 class Policy(nn.Module):
     def __init__(self, env):
         super(Policy, self).__init__()
