@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
 
 # from os import path
 from torch.distributions import Categorical, Normal
@@ -31,6 +32,7 @@ class SAC(nn.Module):
             self.actor = DiscreteActor(env)
         else:
             self.actor = Actor(env)
+        self.discrete = disc
         self.soft_q1 = SoftQNetwork(env)
         self.soft_q2 = SoftQNetwork(env)
         self.tgt_q1 = SoftQNetwork(env).eval()
@@ -44,6 +46,15 @@ class SAC(nn.Module):
         self.alpha = self.log_alpha.detach().exp()
         self.gamma = gamma
         self.tau = tau
+
+    def get_action(self, state):
+        return self.actor.get_action(state)
+
+    def init_opt(self, opt="Adam", lr=3e-4):
+        self.q1_opt = optim.Adam(self.soft_q1.parameters(), lr=lr)
+        self.q2_opt = optim.Adam(self.soft_q2.parameters(), lr=lr)
+        self.actor_opt = optim.Adam(self.actor.parameters(), lr=lr)
+        self.entropy_opt = optim.Adam([self.log_alpha], lr=lr)
 
     def _freeze_tgt_networks(self):
         """
@@ -93,6 +104,17 @@ class SAC(nn.Module):
         q_value_loss2 = F.mse_loss(p_q2, target_q_value)
         return q_value_loss1, q_value_loss2
 
+    def update_critics(self, q1_loss, q2_loss, clip=5.0):
+        self.q1_opt.zero_grad()
+        q1_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.soft_q1.parameters(), clip)
+        self.q1_opt.step()
+
+        self.q2_opt.zero_grad()
+        q2_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.soft_q2.parameters(), clip)
+        self.q2_opt.step()
+
     def calc_actor_loss(self, states):
         # Train actor network
         log_probs, actions, _, _, _ = self.actor.evaluate(states)
@@ -102,7 +124,13 @@ class SAC(nn.Module):
         policy_loss = (self.alpha * log_probs - min_q).mean()
         return policy_loss, log_probs
 
-    def calculate_entropy_tuning_loss(self, log_probs):
+    def update_actor(self, actor_loss, clip=5.0):
+        self.actor_opt.zero_grad()
+        actor_loss.backward()
+        torch.nn.utils.clip_grad_norm_(SAC.actor.parameters(), clip)
+        self.actor_opt.step()
+
+    def calc_entropy_tuning_loss(self, log_probs):
         """
         Calculates the loss for the entropy temperature parameter.
         log_probs come from the return value of calculate_actor_loss
@@ -111,6 +139,12 @@ class SAC(nn.Module):
             self.log_alpha * (log_probs.detach() + self.target_entropy)
         ).mean()
         return alpha_loss
+
+    def update_entropy(self, alpha_loss):
+        self.entropy_opt.zero_grad()
+        alpha_loss.backward()
+        self.entropy_opt.step()
+        self.alpha = self.log_alpha.detach().exp()
 
 
 class SoftQNetwork(nn.Module):
@@ -281,6 +315,7 @@ class DiscreteActor(nn.Module):
             nn.Dropout(p=dropout),
             nn.ReLU(),
             self.l3,
+            nn.Softmax(dim=-1),
         )
 
     def init_weights(self, init_w=3e-3):

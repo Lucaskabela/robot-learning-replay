@@ -6,16 +6,58 @@ AUTHOR: Lucas Kabela
 PURPOSE: This file defines the code for training the neural networks in pytorch
 """
 import gym
-import models
+from models import SAC
 import numpy as np
 import pandas as pd
 import math
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
-import torch.optim as optim
 import torch.utils.tensorboard as tb
+from replay import ReplayBuffer
 from utils import NormalizedActions
+
+
+def guard_q_actions(actions, dim):
+    """Guard to convert actions to one-hot for input to Q-network"""
+    actions = F.one_hot(actions.long(), dim).float()
+    return actions
+
+
+def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=100):
+    states, action, reward, next_states, done = replay.sample(batch_size)
+    if not math.isnan(reward.std()):
+        stable_denom = reward.std() + np.finfo(np.float32).eps
+        reward = (reward - reward.mean()) / stable_denom
+    if sac.discrete:
+        action = guard_q_actions(action, sac.soft_q1.action_space)
+
+    q_loss = sac.calc_critic_loss(states, action, reward, next_states, done)
+    sac.update_critics(q_loss[0], q_loss[1])
+
+    actor_loss, log_action_probabilities = sac.calc_actor_loss(states)
+    sac.update_actor(actor_loss)
+
+    alpha_loss = sac.calc_entropy_tuning_loss(log_action_probabilities)
+    sac.update_entropy(alpha_loss)
+    sac.soft_copy()
+
+    if step % log_interval == 0:
+        writer.add_scalar("loss/Q1", q_loss[0].detach().item(), step)
+        writer.add_scalar("loss/Q2", q_loss[1].detach().item(), step)
+        writer.add_scalar("loss/policy", actor_loss.detach().item(), step)
+        writer.add_scalar("loss/alpha", alpha_loss.detach().item(), step)
+        writer.add_scalar("stats/alpha", sac.alpha, step)
+        writer.add_scalar(
+            "stats/entropy",
+            log_action_probabilities.detach().mean().item(),
+            step,
+        )
+    # Save and intialize episode history counters
+    sac.actor.loss_history.append(actor_loss.item())
+    sac.actor.reset()
+    del sac.actor.rewards[:]
+    del sac.actor.saved_log_probs[:]
 
 
 def plot_success(policy):
@@ -30,10 +72,10 @@ def plot_success(policy):
         range(len(policy.reward_history)),
         rolling_mean - std,
         rolling_mean + std,
-        color="orange",
+        color="blue",
         alpha=0.2,
     )
-    ax1.set_title("Episode Length Moving Average ({}-episode window)".format(window))
+    ax1.set_title("Episode Length Moving Average")
     ax1.set_xlabel("Episode")
     ax1.set_ylabel("Episode Length")
 
@@ -46,154 +88,61 @@ def plot_success(policy):
     plt.show()
 
 
-def update_policy(replay, policy, value, optimizer, val_optimizer, gamma=0.99):
-    device = policy.device()
-
-    R = 0
-    policy_loss = []
-    returns = []
-    for r in policy.rewards[::-1]:
-        R = r + gamma * R
-        returns.insert(0, R)
-    returns = torch.tensor(returns).float().to(device)
-    states = torch.tensor(
-        [state for state, _, _ in replay], dtype=torch.float, device=device
-    )
-    vals = value(states).squeeze(1)
-    if not math.isnan(returns.std()):
-        returns = (returns - returns.mean()) / (
-            returns.std() + np.finfo(np.float32).eps
-        )
-    with torch.no_grad():
-        advantage = returns - vals
-
-    for log_prob, R in zip(policy.saved_log_probs, advantage):
-        policy_loss.append(-log_prob * R)
-
-    optimizer.zero_grad()
-    policy_loss = torch.stack(policy_loss).sum().to(device)
-    policy_loss.backward()
-    optimizer.step()
-
-    val_optimizer.zero_grad()
-    F.mse_loss(vals, returns).backward()
-    val_optimizer.step()
-
-    # Save and intialize episode history counters
-    policy.loss_history.append(policy_loss.item())
-    policy.reward_history.append(np.sum(policy.rewards))
-    policy.reset()
-    del policy.rewards[:]
-    del policy.saved_log_probs[:]
-
-
 def train(args):
     print("Starting training!")
     env = NormalizedActions(gym.make("CartPole-v1"))
     env.seed(1)
     torch.manual_seed(1)
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    policy = models.Policy(env).to(device)
-    value = models.Value(env).to(device)
-    optimizer = optim.Adam(policy.parameters(), lr=args.learning_rate)
-    val_optimizer = optim.Adam(value.parameters(), lr=args.learning_rate)
+    if args.log_dir is not None:
+        writer = tb.SummaryWriter(log_dir=args.log_dir)
+    else:
+        writer = None
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    sac = SAC(env).to(device)
     scores = []
-    replay = []
+    reward_cum = 0
+    replay = ReplayBuffer(1_000_000)
+    step = 0
     for episode in range(args.num_episodes):
         # Reset environment and record the starting state
         state = env.reset()
 
         for time in range(1000):
-            action = policy.predict(state)
+            action = sac.get_action(state)
 
             # Uncomment to render the visual state in a window
             # env.render()
 
             # Step through environment using chosen action
             next_state, reward, done, _ = env.step(action.item())
-            replay.append((state, action, reward))
+            replay.store_transition(state, action, next_state, reward, done)
             state = next_state
-
+            reward_cum += reward
             # Save reward
-            policy.rewards.append(reward)
+            sac.actor.rewards.append(reward)
             if done:
                 break
-
-        update_policy(replay, policy, value, optimizer, val_optimizer)
-        replay = []
+            if len(replay) > args.batch_size:
+                update_SAC(
+                    sac,
+                    replay,
+                    step,
+                    writer,
+                    batch_size=args.batch_size,
+                )
+            step += 1
         # Calculate score to determine when the environment has been solved
         scores.append(time)
         mean_score = np.mean(scores[-100:])
 
         if episode % 50 == 0:
-            print(
-                "Episode {}\tAverage length (last 100 episodes): {:.2f}".format(
-                    episode, mean_score
-                )
-            )
+            print("Episode {}\Avg length {:.2f}".format(episode, mean_score))
 
         if mean_score > env.spec.reward_threshold:
-            print(
-                "Solved after {} episodes! Running average is now {}. Last episode ran to {} time steps.".format(
-                    episode, mean_score, time
-                )
-            )
+            print("Solved after {} episodes!".format(episode))
             break
-    plot_success(policy)
 
-
-# def train(args):
-#     from os import path
-
-#     model = None  # Planner()
-#     train_logger, valid_logger = None, None
-#     if args.log_dir is not None:
-#         train_logger = tb.SummaryWriter(path.join(args.log_dir, "train"))
-#         valid_logger = tb.SummaryWriter(path.join(args.log_dir, "valid"))
-
-#     if torch.cuda.is_available():
-#         device = torch.device("cuda")
-#     else:
-#         device = torch.device("cpu")
-
-#     model = model.to(device)
-#     if args.continue_training:
-#         model = load_model(model)
-#     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-
-#     train_data = load_data("drive_data")
-#     loss = torch.L1Loss()
-#     global_step = 0
-#     for epoch in range(args.num_epoch):
-
-#         model.train()
-#         losses = []
-#         for img, label in train_data:
-#             img, label = img.to(device), label.to(device)
-
-#             pred = model(img)
-#             loss_val = loss(pred, label)
-
-#             if train_logger is not None:
-#                 train_logger.add_scalar("loss", loss_val, global_step)
-#                 if global_step % 100 == 0:
-#                     fig, ax = plt.subplots(1, 1)
-#                     ax.imshow(TF.to_pil_image(img[0].cpu()))
-#                     ax.add_artist(plt.Circle(label[0], 2, ec="g", fill=False, lw=1.5))
-#                     ax.add_artist(plt.Circle(pred[0], 2, ec="r", fill=False, lw=1.5))
-#                     train_logger.add_figure("viz", fig, global_step)
-#                     del ax, fig
-
-#             optimizer.zero_grad()
-#             loss_val.backward()
-#             optimizer.step()
-#             global_step += 1
-
-#             losses.append(loss_val.detach().cpu().numpy())
-
-#         avg_loss = np.mean(losses)
-#         if train_logger is None:
-#             print("epoch %-3d \t loss = %0.3f" % (epoch, avg_loss))
-#         save_model(model)
-
-#     save_model(model)
+    plot_success(sac.actor)
