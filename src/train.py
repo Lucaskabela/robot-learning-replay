@@ -119,7 +119,7 @@ def train(args):
 
             # Step through environment using chosen action
             next_state, reward, done, _ = env.step(action)
-            replay.store_transition(state, action, next_state, reward, done)
+            replay.store_transition(state.cpu(), action, next_state, reward, done)
             state = next_state
             reward_cum += reward
             # Save reward

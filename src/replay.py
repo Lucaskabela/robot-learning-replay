@@ -29,7 +29,7 @@ class ReplayBuffer:
     def store_transition(self, state, action, state_p, reward, done):
         idx = self.num_added % self.buf_size
 
-        self.states[idx], self.action[idx] = state, action
+        self.states[idx], self.actions[idx] = state, action
         self.next_states[idx] = state_p
         self.rewards[idx], self.dones[idx] = reward, done
 

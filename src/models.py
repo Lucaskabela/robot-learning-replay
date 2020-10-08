@@ -226,6 +226,16 @@ class Actor(nn.Module):
         self.mean_linear = nn.Linear(hidden[1], self.action_space)
         self.log_std_linear = nn.Linear(hidden[1], self.action_space)
 
+        # Overall reward and loss history
+        self.reward_history = []
+        self.loss_history = []
+        self.reset()
+
+    def reset(self):
+        # Episode policy and reward history
+        self.saved_log_probs = []
+        self.rewards = []
+
     def init_weights(self, init_w=3e-3):
         """
         Initialize weights with xaiver uniform, and
@@ -317,6 +327,16 @@ class DiscreteActor(nn.Module):
             self.l3,
             nn.Softmax(dim=-1),
         )
+
+        # Overall reward and loss history
+        self.reward_history = []
+        self.loss_history = []
+        self.reset()
+
+    def reset(self):
+        # Episode policy and reward history
+        self.saved_log_probs = []
+        self.rewards = []
 
     def init_weights(self, init_w=3e-3):
         """
