@@ -157,8 +157,6 @@ class SoftQNetwork(nn.Module):
     def __init__(self, env, hidden=[128, 128], dropout=0.0):
         super(SoftQNetwork, self).__init__()
         self.state_space = env.observation_space.shape[0]
-        print(env.observation_space.shape)
-        print(env.action_space.n)
         self.action_space = env.action_space.n
         self.hidden = hidden
 

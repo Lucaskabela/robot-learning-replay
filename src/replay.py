@@ -20,8 +20,8 @@ class ReplayBuffer:
         self.buf_size = buf_size
         self.num_added = 0
 
-        self.states = np.zeros((self.buf_size, *in_shape))
-        self.next_states = np.zeros((self.buf_size, *in_shape))
+        self.states = np.zeros((self.buf_size, in_shape))
+        self.next_states = np.zeros((self.buf_size, in_shape))
         self.actions = np.zeros((self.buf_size, action_d))
         self.rewards = np.zeros(self.buf_size)
         self.dones = np.zeros(self.buf_size, dtype=np.bool)
