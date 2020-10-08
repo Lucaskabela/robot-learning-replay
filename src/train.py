@@ -101,10 +101,10 @@ def train(args):
         device = torch.device("cuda")
     else:
         device = torch.device("cpu")
-    sac = SAC(env).to(device)
+    sac = SAC(env, disc=True).to(device)
     scores = []
     reward_cum = 0
-    replay = ReplayBuffer(1_000_000)
+    replay = ReplayBuffer(10_000, sac.action_space)
     step = 0
     for episode in range(args.num_episodes):
         # Reset environment and record the starting state
@@ -139,7 +139,7 @@ def train(args):
         mean_score = np.mean(scores[-100:])
 
         if episode % 50 == 0:
-            print("Episode {}\Avg length {:.2f}".format(episode, mean_score))
+            print("Episode {} Avg length {:.2f}".format(episode, mean_score))
 
         if mean_score > env.spec.reward_threshold:
             print("Solved after {} episodes!".format(episode))
