@@ -15,6 +15,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.tensorboard as tb
+from utils import NormalizedActions
 
 
 def plot_success(policy):
@@ -88,7 +89,7 @@ def update_policy(replay, policy, value, optimizer, val_optimizer, gamma=0.99):
 
 def train(args):
     print("Starting training!")
-    env = gym.make("CartPole-v1")
+    env = NormalizedActions(gym.make("CartPole-v1"))
     env.seed(1)
     torch.manual_seed(1)
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")

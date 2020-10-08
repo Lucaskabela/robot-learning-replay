@@ -6,11 +6,14 @@ AUTHOR: Lucas Kabela
 PURPOSE: This file defines Neural Network Architecture and other models
         which will be evaluated in this expirement
 """
+import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 # from os import path
-from torch.distributions import Categorical
+from torch.distributions import Categorical, Normal
+from utils import GumbelSoftmax
 
 
 class SAC(nn.Module):
@@ -22,13 +25,25 @@ class SAC(nn.Module):
     discrete
     """
 
-    def __init__(self, env, target_entropy_ratio=0.95):
+    def __init__(self, env, tgt_ent=None, gamma=0.99, tau=1e-2, disc=False):
         super(SAC, self).__init__()
-        self.policy = Policy(env)
+        if disc:
+            self.actor = DiscreteActor(env)
+        else:
+            self.actor = Actor(env)
         self.soft_q1 = SoftQNetwork(env)
         self.soft_q2 = SoftQNetwork(env)
         self.tgt_q1 = SoftQNetwork(env).eval()
         self.tgt_q2 = SoftQNetwork(env).eval()
+
+        if tgt_ent is None:
+            self.target_entropy = -np.log(1.0 / env.action_space.n)
+        else:
+            self.target_entropy = tgt_ent
+        self.log_alpha = torch.zeros(1, requires_grad=True)
+        self.alpha = self.log_alpha.detach().exp()
+        self.gamma = gamma
+        self.tau = tau
 
     def _freeze_tgt_networks(self):
         """
@@ -50,6 +65,53 @@ class SAC(nn.Module):
         for param in self.tgt_q2.parameters():
             param.requires_grad = False
 
+    def soft_copy(self):
+        q1_params = zip(self.tgt_q1.parameters(), self.soft_q1.parameters())
+        q2_params = zip(self.tgt_q2.parameters(), self.soft_q2.parameters())
+        for target_param, param in q1_params:
+            target_param.data.copy_(
+                target_param.data * (1.0 - self.tau) + param.data * self.tau
+            )
+
+        for target_param, param in q2_params:
+            target_param.data.copy_(
+                target_param.data * (1.0 - self.tau) + param.data * self.tau
+            )
+
+    def calc_critic_loss(self, states, actions, rewards, next_states, done):
+        with torch.no_grad():
+            next_probs, next_actions, _, _ = self.actor.evaluate(next_states)
+            next_q1 = self.tgt_q1(next_states, next_actions)
+            next_q2 = self.tgt_q2(next_states, next_actions)
+
+            min_q_next = torch.min(next_q1, next_q2) - self.alpha * next_probs
+            target_q_value = rewards + (1 - done) * self.gamma * min_q_next
+
+        p_q1 = self.soft_q1(states, actions)
+        p_q2 = self.soft_q2(states, actions)
+        q_value_loss1 = F.mse_loss(p_q1, target_q_value)
+        q_value_loss2 = F.mse_loss(p_q2, target_q_value)
+        return q_value_loss1, q_value_loss2
+
+    def calc_actor_loss(self, states):
+        # Train actor network
+        log_probs, actions, _, _, _ = self.actor.evaluate(states)
+        q1 = self.soft_q1(states, actions)
+        q2 = self.soft_q1(states, actions)
+        min_q = torch.min(q1, q2)
+        policy_loss = (self.alpha * log_probs - min_q).mean()
+        return policy_loss, log_probs
+
+    def calculate_entropy_tuning_loss(self, log_probs):
+        """
+        Calculates the loss for the entropy temperature parameter.
+        log_probs come from the return value of calculate_actor_loss
+        """
+        alpha_loss = -(
+            self.log_alpha * (log_probs.detach() + self.target_entropy)
+        ).mean()
+        return alpha_loss
+
 
 class SoftQNetwork(nn.Module):
     """
@@ -58,14 +120,15 @@ class SoftQNetwork(nn.Module):
     Q value
     """
 
-    def __init__(self, env, num_hidden=128, dropout=0.0):
+    def __init__(self, env, hidden=[128, 128], dropout=0.0):
         super(SoftQNetwork, self).__init__()
         self.state_space = env.observation_space.shape[0]
         self.action_space = env.action_space.n
+        self.hidden = hidden
 
-        self.l1 = nn.Linear(self.state_space + self.action_space, num_hidden)
-        self.l2 = nn.Linear(num_hidden, num_hidden)
-        self.l3 = nn.Linear(num_hidden, 1)
+        self.l1 = nn.Linear(self.state_space + self.action_space, hidden[0])
+        self.l2 = nn.Linear(hidden[0], hidden[1])
+        self.l3 = nn.Linear(hidden[1], 1)
 
         self.ffn = nn.Sequential(
             self.l1,
@@ -87,9 +150,9 @@ class SoftQNetwork(nn.Module):
         nn.init.xavier_uniform_(self.l1.weight)
         self.l1.bias.data.fill_(over_n)
         nn.init.xavier_uniform_(self.l2.weight)
-        self.l2.bias.data.fill_(over_n)
+        self.l2.bias.data.fill_(1 / self.hidden[0])
         nn.init.xavier_uniform_(self.l3.weight)
-        self.l3.bias.data.fill_(over_n)
+        self.l3.bias.data.fill_(1 / self.hidden[1])
 
     def forward(self, state, action):
         """
@@ -98,8 +161,169 @@ class SoftQNetwork(nn.Module):
         q_in = torch.cat([state, action], 1)
         return self.ffn(q_in).view(-1)
 
+
 class Actor(nn.Module):
-    
+    def __init__(
+        self,
+        env,
+        hidden=[128, 128],
+        dropout=0.0,
+        log_std_min=-20,
+        log_std_max=2,
+    ):
+        super(Actor, self).__init__()
+        self.state_space = env.observation_space.shape[0]
+        self.action_space = env.action_space.n
+        self.hidden = hidden
+        self.log_std_min = log_std_min
+        self.log_std_max = log_std_max
+
+        self.l1 = nn.Linear(self.state_space, hidden[0])
+        self.l2 = nn.Linear(hidden[0], hidden[1])
+        self.ffn = nn.Sequential(
+            self.l1,
+            nn.Dropout(p=dropout),
+            nn.ReLU(),
+            self.l2,
+            nn.Dropout(p=dropout),
+            nn.ReLU(),
+        )
+
+        self.mean_linear = nn.Linear(hidden[1], self.action_space)
+        self.log_std_linear = nn.Linear(hidden[1], self.action_space)
+
+    def init_weights(self, init_w=3e-3):
+        """
+        Initialize weights with xaiver uniform, and
+        fill bias with 1 over n
+        """
+        over_n = 1 / (self.state_space + self.action_space)
+        nn.init.xavier_uniform_(self.l1.weight)
+        self.l1.bias.data.fill_(over_n)
+        nn.init.xavier_uniform_(self.l2.weight)
+        self.l2.bias.data.fill_(1 / self.hidden[0])
+
+        self.mean_linear.weight.data.uniform_(-init_w, init_w)
+        self.mean_linear.bias.data.uniform_(-init_w, init_w)
+        self.log_std_linear.weight.data.uniform_(-init_w, init_w)
+        self.log_std_linear.bias.data.uniform_(-init_w, init_w)
+
+    def forward(self, state):
+        x = self.ffn(state)
+        mean = self.mean_linear(x)
+        log_std = self.log_std_linear(x)
+        log_std = torch.clamp(
+            log_std,
+            min=self.log_std_min,
+            max=self.log_std_max,
+        )
+
+        return mean, log_std
+
+    def evaluate(self, state, epsilon=1e-6):
+        """
+        Evaluate a state, returning action, log probs,
+        mean, log_std, and z, the sampled action
+        """
+        mean, log_std = self.forward(state)
+        std = log_std.exp()
+
+        normal = Normal(mean, std)
+        z = normal.sample()
+        action = torch.tanh(z)
+
+        log_prob = normal.log_prob(z) - torch.log(1 - action.pow(2) + epsilon)
+        log_prob = log_prob.sum(-1, keepdim=True)
+
+        return action, log_prob, z, mean, log_std
+
+    def get_action(self, state):
+        """
+        Returns an action given a state
+        """
+        state = torch.FloatTensor(state).unsqueeze(0).to(self.device())
+        mean, log_std = self.forward(state)
+        std = log_std.exp()
+
+        normal = Normal(mean, std)
+        z = normal.sample()
+        action = torch.tanh(z)
+
+        action = action.detach().cpu().numpy()
+        return action[0]
+
+    def device(self):
+        return next(self.parameters()).device
+
+
+class DiscreteActor(nn.Module):
+    def __init__(
+        self,
+        env,
+        hidden=[128, 128],
+        dropout=0.0,
+        log_std_min=-20,
+        log_std_max=2,
+    ):
+        super(Actor, self).__init__()
+        self.state_space = env.observation_space.shape[0]
+        self.action_space = env.action_space.n
+        self.hidden = hidden
+
+        self.l1 = nn.Linear(self.state_space, hidden[0])
+        self.l2 = nn.Linear(hidden[0], hidden[1])
+        self.l3 = nn.Linear(hidden[1], self.action_space)
+        self.ffn = nn.Sequential(
+            self.l1,
+            nn.Dropout(p=dropout),
+            nn.ReLU(),
+            self.l2,
+            nn.Dropout(p=dropout),
+            nn.ReLU(),
+            self.l3,
+        )
+
+    def init_weights(self, init_w=3e-3):
+        """
+        Initialize weights with xaiver uniform, and
+        fill bias with 1 over n
+        """
+        over_n = 1 / (self.state_space + self.action_space)
+        nn.init.xavier_uniform_(self.l1.weight)
+        self.l1.bias.data.fill_(over_n)
+        nn.init.xavier_uniform_(self.l2.weight)
+        self.l2.bias.data.fill_(1 / self.hidden[0])
+        self.l3.weight.data.uniform_(-init_w, init_w)
+        self.l3.bias.data.uniform_(-init_w, init_w)
+
+    def forward(self, state):
+        return self.ffn(state)
+
+    def evaluate(self, state, epsilon=1e-6, reparam=False):
+        """
+        Evaluate a state, returning action, log probs,
+        mean, log_std, and z, the sampled action
+        """
+
+        action_probs = self.forward(state)
+        action_pd = GumbelSoftmax(probs=action_probs, temperature=0.9)
+        actions = action_pd.rsample() if reparam else action_pd.sample()
+        log_probs = action_pd.log_prob(actions)
+        return actions, log_probs, None, None, None
+
+    def get_action(self, state):
+        """
+        Returns an action given a state
+        """
+        action_probs = self.forward(state)
+        action = torch.distributions.Categorical(probs=action_probs).sample()
+        action = action.detach().cpu().numpy()
+        return action[0]
+
+    def device(self):
+        return next(self.parameters()).device
+
+
 class Policy(nn.Module):
     def __init__(self, env):
         super(Policy, self).__init__()
