@@ -353,7 +353,7 @@ class DiscreteActor(nn.Module):
         action_probs = self.forward(state)
         action = torch.distributions.Categorical(probs=action_probs).sample()
         action = action.detach().cpu().numpy()
-        return action[0]
+        return action
 
     def device(self):
         return next(self.parameters()).device

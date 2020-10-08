@@ -90,7 +90,7 @@ def plot_success(policy):
 
 def train(args):
     print("Starting training!")
-    env = NormalizedActions(gym.make("CartPole-v1"))
+    env = gym.make("CartPole-v1")
     env.seed(1)
     torch.manual_seed(1)
     if args.log_dir is not None:
@@ -118,7 +118,7 @@ def train(args):
             # env.render()
 
             # Step through environment using chosen action
-            next_state, reward, done, _ = env.step(action.item())
+            next_state, reward, done, _ = env.step(action)
             replay.store_transition(state, action, next_state, reward, done)
             state = next_state
             reward_cum += reward
