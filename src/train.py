@@ -104,7 +104,7 @@ def train(args):
     sac = SAC(env, disc=True).to(device)
     scores = []
     reward_cum = 0
-    replay = ReplayBuffer(10000, sac.actor.state_space.shape, sac.actor.action_space)
+    replay = ReplayBuffer(10000, sac.actor.state_space, sac.actor.action_space)
     step = 0
     for episode in range(args.num_episodes):
         # Reset environment and record the starting state
