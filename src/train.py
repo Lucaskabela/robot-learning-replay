@@ -111,6 +111,7 @@ def train(args):
         state = env.reset()
 
         for time in range(1000):
+            state = torch.from_numpy(state).float().to(device)
             action = sac.get_action(state)
 
             # Uncomment to render the visual state in a window
