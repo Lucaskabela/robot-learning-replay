@@ -26,7 +26,7 @@ class ReplayBuffer:
         self.rewards = np.zeros(self.buf_size)
         self.dones = np.zeros(self.buf_size, dtype=np.bool)
 
-    def store_transition(self, state, action, state_p, reward, done):
+    def store(self, state, action, state_p, reward, done):
         idx = self.num_added % self.buf_size
 
         self.states[idx], self.actions[idx] = state, action
@@ -35,7 +35,7 @@ class ReplayBuffer:
 
         self.num_added += 1
 
-    def sample_transitions(self, b_size):
+    def sample(self, b_size=256):
         upper_bound = min(self.buf_size, self.num_added)
         batch_idxes = np.random.choice(upper_bound, b_size)
 
