@@ -146,6 +146,9 @@ class SAC(nn.Module):
         self.entropy_opt.step()
         self.alpha = self.log_alpha.detach().exp()
 
+    def device(self):
+        return next(self.parameters()).device
+
 
 class SoftQNetwork(nn.Module):
     """
@@ -194,6 +197,9 @@ class SoftQNetwork(nn.Module):
         """
         q_in = torch.cat([state, action], 1)
         return self.ffn(q_in).view(-1)
+
+    def device(self):
+        return next(self.parameters()).device
 
 
 class Actor(nn.Module):
