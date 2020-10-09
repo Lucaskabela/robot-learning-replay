@@ -199,6 +199,7 @@ class SoftQNetwork(nn.Module):
         Given the state and action, produce a Q value
         """
         q_in = torch.cat([state, action], 1)
+        print(q_in.shape)
         return self.ffn(q_in).view(-1)
 
     def device(self):
