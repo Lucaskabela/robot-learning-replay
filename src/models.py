@@ -91,7 +91,8 @@ class SAC(nn.Module):
 
     def calc_critic_loss(self, states, actions, rewards, next_states, done):
         with torch.no_grad():
-            next_probs, next_actions, _, _ = self.actor.evaluate(next_states)
+            advantage = self.actor.evaluate(next_states)
+            next_probs, next_actions, _, _, _ = advantage
             next_q1 = self.tgt_q1(next_states, next_actions)
             next_q2 = self.tgt_q2(next_states, next_actions)
 
