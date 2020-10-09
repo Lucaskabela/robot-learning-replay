@@ -45,7 +45,7 @@ class ReplayBuffer:
         rewards = self.rewards[batch_idxes]
         dones = self.dones[batch_idxes]
 
-        return [states, actions, state_ps, rewards, dones]
+        return [states, actions, rewards, state_ps, dones]
 
     def __len__(self):
         return min(self.buf_size, self.num_added)
