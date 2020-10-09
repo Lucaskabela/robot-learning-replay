@@ -19,12 +19,19 @@ from replay import ReplayBuffer
 
 def guard_q_actions(actions, dim):
     """Guard to convert actions to one-hot for input to Q-network"""
-    actions = F.one_hot(actions.long(), dim).float()
+    actions = F.one_hot(actions, dim).float()
     return actions
 
 
+def batch_to_torch_device(batch, device):
+    return [torch.from_numpy(b).float().to(device) for b in batch]
+
+
 def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=100):
-    states, action, reward, next_states, done = replay.sample(batch_size)
+    batch = replay.sample(batch_size)
+    batch = batch_to_torch_device(batch, sac.device())
+    states, action, reward, next_states, done = batch
+
     if not math.isnan(reward.std()):
         stable_denom = reward.std() + np.finfo(np.float32).eps
         reward = (reward - reward.mean()) / stable_denom
