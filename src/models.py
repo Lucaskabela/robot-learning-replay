@@ -93,7 +93,7 @@ class SAC(nn.Module):
         with torch.no_grad():
             advantage = self.actor.evaluate(next_states)
             next_probs, next_actions, _, _, _ = advantage
-            next_actions.unsqueeze(1)
+            next_actions = next_actions.unsqueeze(1)
             next_q1 = self.tgt_q1(next_states, next_actions)
             next_q2 = self.tgt_q2(next_states, next_actions)
 
