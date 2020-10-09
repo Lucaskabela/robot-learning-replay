@@ -96,7 +96,9 @@ class SAC(nn.Module):
             next_actions = guard_q_actions(next_actions, self.actor.action_space)
             next_q1 = self.tgt_q1(next_states, next_actions)
             next_q2 = self.tgt_q2(next_states, next_actions)
-
+            print(next_q1.device)
+            print(next_probs.device)
+            print(self.alpha.device)
             min_q_next = torch.min(next_q1, next_q2) - self.alpha * next_probs
             target_q_value = rewards + (1 - done) * self.gamma * min_q_next
 
