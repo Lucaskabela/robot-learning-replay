@@ -141,6 +141,7 @@ class SAC(nn.Module):
         Calculates the loss for the entropy temperature parameter.
         log_probs come from the return value of calculate_actor_loss
         """
+        self.log_alpha = self.log_alpha.to(self.device())
         alpha_loss = -(
             self.log_alpha * (log_probs.detach() + self.target_entropy)
         ).mean()
