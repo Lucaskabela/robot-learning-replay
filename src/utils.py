@@ -12,6 +12,12 @@ import torch
 import torch.nn.functional as F
 
 
+def guard_q_actions(actions, dim):
+    """Guard to convert actions to one-hot for input to Q-network"""
+    actions = F.one_hot(actions.long(), dim).float()
+    return actions
+
+
 # Taken from https://github.com/vaishak2future/sac/blob/master/sac.ipynb
 class NormalizedActions(gym.ActionWrapper):
     def _action(self, action):

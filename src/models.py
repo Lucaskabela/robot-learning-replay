@@ -14,7 +14,7 @@ import torch.optim as optim
 
 # from os import path
 from torch.distributions import Categorical, Normal
-from utils import GumbelSoftmax
+from utils import GumbelSoftmax, guard_q_actions
 
 
 class SAC(nn.Module):
@@ -93,8 +93,7 @@ class SAC(nn.Module):
         with torch.no_grad():
             advantage = self.actor.evaluate(next_states)
             next_probs, next_actions, _, _, _ = advantage
-            print(next_actions.shape)
-            print(self.actor.action_space)
+            next_actions = guard_q_actions(next_actions, self.actor.action_space)
             next_q1 = self.tgt_q1(next_states, next_actions)
             next_q2 = self.tgt_q2(next_states, next_actions)
 

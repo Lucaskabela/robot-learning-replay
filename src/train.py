@@ -12,15 +12,9 @@ import pandas as pd
 import math
 import matplotlib.pyplot as plt
 import torch
-import torch.nn.functional as F
 import torch.utils.tensorboard as tb
 from replay import ReplayBuffer
-
-
-def guard_q_actions(actions, dim):
-    """Guard to convert actions to one-hot for input to Q-network"""
-    actions = F.one_hot(actions.long(), dim).float()
-    return actions
+from utils import guard_q_actions
 
 
 def batch_to_torch_device(batch, device):
