@@ -165,7 +165,7 @@ class SoftQNetwork(nn.Module):
         self.state_space = env.observation_space.shape[0]
         self.action_space = env.action_space.n
         self.hidden = hidden
-
+        print(self.action_space + self.state_space)
         self.l1 = nn.Linear(self.state_space + self.action_space, hidden[0])
         self.l2 = nn.Linear(hidden[0], hidden[1])
         self.l3 = nn.Linear(hidden[1], 1)
