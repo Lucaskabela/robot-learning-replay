@@ -19,7 +19,7 @@ from replay import ReplayBuffer
 
 def guard_q_actions(actions, dim):
     """Guard to convert actions to one-hot for input to Q-network"""
-    actions = F.one_hot(actions, dim).float()
+    actions = F.one_hot(actions.long(), dim).float()
     return actions
 
 
