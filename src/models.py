@@ -92,8 +92,9 @@ class SAC(nn.Module):
     def calc_critic_loss(self, states, actions, rewards, next_states, done):
         with torch.no_grad():
             advantage = self.actor.evaluate(next_states)
-            next_probs, next_actions, _, _, _ = advantage
-            next_actions = next_actions.unsqueeze(1)
+            next_actions, next_probs, _, _, _ = advantage
+            if self.discrete:
+                next_actions = guard_q_actions(next_actions, self.tgt_q1.action_space)
             next_q1 = self.tgt_q1(next_states, next_actions)
             next_q2 = self.tgt_q2(next_states, next_actions)
 
@@ -120,7 +121,9 @@ class SAC(nn.Module):
 
     def calc_actor_loss(self, states):
         # Train actor network
-        log_probs, actions, _, _, _ = self.actor.evaluate(states)
+        actions, log_probs, _, _, _ = self.actor.evaluate(states)
+        if self.discrete:
+            actions = guard_q_actions(actions, self.soft_q1.action_space)
         q1 = self.soft_q1(states, actions)
         q2 = self.soft_q1(states, actions)
         min_q = torch.min(q1, q2)
@@ -130,7 +133,7 @@ class SAC(nn.Module):
     def update_actor(self, actor_loss, clip=5.0):
         self.actor_opt.zero_grad()
         actor_loss.backward()
-        torch.nn.utils.clip_grad_norm_(SAC.actor.parameters(), clip)
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), clip)
         self.actor_opt.step()
 
     def calc_entropy_tuning_loss(self, log_probs):
@@ -165,7 +168,6 @@ class SoftQNetwork(nn.Module):
         self.state_space = env.observation_space.shape[0]
         self.action_space = env.action_space.n
         self.hidden = hidden
-        print(self.action_space + self.state_space)
         self.l1 = nn.Linear(self.state_space + self.action_space, hidden[0])
         self.l2 = nn.Linear(hidden[0], hidden[1])
         self.l3 = nn.Linear(hidden[1], 1)
@@ -199,7 +201,6 @@ class SoftQNetwork(nn.Module):
         Given the state and action, produce a Q value
         """
         q_in = torch.cat([state, action], 1)
-        print(q_in.shape)
         return self.ffn(q_in).view(-1)
 
     def device(self):

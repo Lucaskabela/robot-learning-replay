@@ -29,8 +29,6 @@ def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=100):
     if not math.isnan(reward.std()):
         stable_denom = reward.std() + np.finfo(np.float32).eps
         reward = (reward - reward.mean()) / stable_denom
-    if sac.discrete:
-        action = guard_q_actions(action, sac.soft_q1.action_space)
 
     q_loss = sac.calc_critic_loss(states, action, reward, next_states, done)
     sac.update_critics(q_loss[0], q_loss[1])
@@ -42,7 +40,7 @@ def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=100):
     sac.update_entropy(alpha_loss)
     sac.soft_copy()
 
-    if step % log_interval == 0:
+    if step % log_interval == 0 and writer is not None:
         writer.add_scalar("loss/Q1", q_loss[0].detach().item(), step)
         writer.add_scalar("loss/Q2", q_loss[1].detach().item(), step)
         writer.add_scalar("loss/policy", actor_loss.detach().item(), step)
@@ -102,6 +100,7 @@ def train(args):
     else:
         device = torch.device("cpu")
     sac = SAC(env, disc=True).to(device)
+    sac.init_opt(lr=args.learning_rate)
     scores = []
     reward_cum = 0
     replay = ReplayBuffer(10000, sac.actor.state_space, sac.actor.action_space)
