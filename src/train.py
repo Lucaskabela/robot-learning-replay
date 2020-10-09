@@ -83,6 +83,7 @@ def plot_success(policy):
     ax2.set_ylabel("Episode Length")
 
     fig.tight_layout(pad=2)
+    plt.savefig("sac.png")
     plt.show()
 
 
@@ -139,7 +140,7 @@ def train(args):
         scores.append(time)
         mean_score = np.mean(scores[-100:])
 
-        if episode % 50 == 0:
+        if episode + 1 % 50 == 0:
             print("Episode {} Avg length {:.2f}".format(episode, mean_score))
 
         if mean_score > env.spec.reward_threshold:
