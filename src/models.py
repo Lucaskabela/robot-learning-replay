@@ -38,10 +38,9 @@ class SAC(nn.Module):
         self.tgt_q1 = SoftQNetwork(env).eval()
         self.tgt_q2 = SoftQNetwork(env).eval()
 
-        if tgt_ent is None:
-            self.target_entropy = -np.log(1.0 / env.action_space.n)
-        else:
-            self.target_entropy = tgt_ent
+        self.target_entropy = -np.log(1.0 / env.action_space.n)
+        if tgt_ent is not None:
+            self.target_entropy *= tgt_ent
         self.log_alpha = torch.zeros(1, requires_grad=True)
         self.alpha = self.log_alpha.detach().exp()
         self.gamma = gamma
@@ -121,9 +120,10 @@ class SAC(nn.Module):
 
     def calc_actor_loss(self, states):
         # Train actor network
-        actions, log_probs, _, _, _ = self.actor.evaluate(states)
         if self.discrete:
-            actions = guard_q_actions(actions, self.soft_q1.action_space)
+            actions, log_probs, _, _, _ = self.actor.evaluate(states, reparam=True)
+        else:
+            actions, log_probs, _, _, _ = self.actor.evaluate(states)
         q1 = self.soft_q1(states, actions)
         q2 = self.soft_q1(states, actions)
         min_q = torch.min(q1, q2)

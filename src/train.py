@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.utils.tensorboard as tb
 from replay import ReplayBuffer
-from utils import guard_q_actions
+from utils import guard_q_actions, get_one_hot_np
 
 
 def batch_to_torch_device(batch, device):
@@ -24,13 +24,13 @@ def batch_to_torch_device(batch, device):
 def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=100):
     batch = replay.sample(batch_size)
     batch = batch_to_torch_device(batch, sac.device())
-    states, action, reward, next_states, done = batch
+    states, actions, reward, next_states, done = batch
 
     if not math.isnan(reward.std()):
         stable_denom = reward.std() + np.finfo(np.float32).eps
         reward = (reward - reward.mean()) / stable_denom
 
-    q_loss = sac.calc_critic_loss(states, action, reward, next_states, done)
+    q_loss = sac.calc_critic_loss(states, actions, reward, next_states, done)
     sac.update_critics(q_loss[0], q_loss[1])
 
     actor_loss, log_action_probabilities = sac.calc_actor_loss(states)
@@ -112,12 +112,13 @@ def train(args):
         for time in range(1000):
             state = torch.from_numpy(state).float().to(device)
             action = sac.get_action(state)
-
             # Uncomment to render the visual state in a window
             # env.render()
 
             # Step through environment using chosen action
             next_state, reward, done, _ = env.step(action)
+            if sac.discrete:
+                action = get_one_hot_np(action, sac.soft_q1.action_space)
             replay.store(state.cpu(), action, next_state, reward, done)
             state = next_state
             reward_cum += reward
@@ -125,6 +126,7 @@ def train(args):
             sac.actor.rewards.append(reward)
             if done:
                 break
+            step += 1
             if len(replay) > args.batch_size:
                 update_SAC(
                     sac,
@@ -133,7 +135,6 @@ def train(args):
                     writer,
                     batch_size=args.batch_size,
                 )
-            step += 1
         # Calculate score to determine when the environment has been solved
         scores.append(time)
         mean_score = np.mean(scores[-100:])

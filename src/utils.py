@@ -18,6 +18,12 @@ def guard_q_actions(actions, dim):
     return actions
 
 
+def get_one_hot_np(tgt, dim):
+    """Guard to convert actions to one-hot for input to buffers"""
+    res = np.eye(dim)[np.array(tgt).reshape(-1)]
+    return res.reshape(list(tgt.shape) + [dim])
+
+
 # Taken from https://github.com/vaishak2future/sac/blob/master/sac.ipynb
 class NormalizedActions(gym.ActionWrapper):
     def _action(self, action):
