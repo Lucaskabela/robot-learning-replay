@@ -38,7 +38,7 @@ class SAC(nn.Module):
         self.tgt_q2 = SoftQNetwork(env).eval()
 
         tgt = torch.Tensor(env.action_space.shape).to(self.device())
-        self.target_entropy = -torch.prod(tgt).item()
+        self.target_entropy = -torch.prod(tgt)
 
         self.log_alpha = torch.zeros(1, requires_grad=True)
         self.alpha = self.log_alpha.detach().exp()
@@ -143,7 +143,12 @@ class SAC(nn.Module):
         log_probs come from the return value of calculate_actor_loss
         """
         self.log_alpha = self.log_alpha.to(self.device())
+        print(self.target_entropy.shape)
+        print(log_probs.shape)
         inner_prod = (-log_probs - self.target_entropy).detach()
+        print(inner_prod.shape)
+        print(inner_prod)
+        print(self.log_alpha)
         alpha_loss = (self.log_alpha * inner_prod).mean()
         print(alpha_loss)
         return alpha_loss
