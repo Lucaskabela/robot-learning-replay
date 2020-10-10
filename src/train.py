@@ -102,7 +102,7 @@ def train(args):
         device = torch.device("cuda")
     else:
         device = torch.device("cpu")
-    sac = SAC(env, disc=True).to(device)
+    sac = SAC(env, device, disc=True).to(device)
     sac.init_opt(lr=args.learning_rate)
     scores = []
     reward_cum = 0
