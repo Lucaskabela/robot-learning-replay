@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.utils.tensorboard as tb
 from replay import ReplayBuffer
-from utils import get_one_hot_np
+from utils import get_one_hot_np, NormalizedActions
 
 
 def batch_to_torch_device(batch, device):
@@ -87,21 +87,50 @@ def plot_success(policy):
     plt.savefig("sac.png")
 
 
-def train(args):
-    print("Starting training!")
-    env = gym.make("CartPole-v1")
-    env.seed(1)
-    torch.manual_seed(1)
-    np.random.seed(1)
-    if args.log_dir is not None:
-        writer = tb.SummaryWriter(log_dir=args.log_dir)
+def init_environment(env_name):
+    """
+    Initialize the gym environment, normalize if continuous
+    and return
+    """
+    env = gym.make(env_name)
+    discrete = False
+    if type(env.action_space) is gym.spaces.Discrete:
+        discrete = True
     else:
-        writer = None
+        env = NormalizedActions(env)
+    return env, discrete
+
+
+def seed_random(env, rand_seed):
+    env.seed(rand_seed)
+    torch.manual_seed(rand_seed)
+    np.random.seed(rand_seed)
+
+
+def init_device():
     if torch.cuda.is_available():
         device = torch.device("cuda")
     else:
         device = torch.device("cpu")
-    sac = SAC(env, device, disc=True).to(device)
+    return device
+
+
+def init_logger(log_dir=None):
+    if log_dir is not None:
+        writer = tb.SummaryWriter(log_dir=log_dir)
+    else:
+        writer = None
+    return writer
+
+
+def train(args):
+    print("Starting training!")
+    env, discrete = init_environment(env_name=args.env_name)
+    seed_random(env, args.rand_seed)
+    device = init_device()
+    writer = init_logger(log_dir=args.log_dir)
+
+    sac = SAC(env, device, at=args.alph_tune, disc=discrete).to(device)
     sac.init_opt(lr=args.learning_rate)
     scores = []
     reward_cum = 0
@@ -137,8 +166,10 @@ def train(args):
                     writer,
                     batch_size=args.batch_size,
                 )
+
         # Calculate score to determine when the environment has been solved
         scores.append(time)
+        sac.actor.reward_history.append(reward_cum)
         mean_score = np.mean(scores[-100:])
 
         if episode % 50 == 0:

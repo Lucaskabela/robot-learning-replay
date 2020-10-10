@@ -35,8 +35,12 @@ def _parse_args():
         description="Arguments for Experience Replay project"
     )
     # Model related arguments here
-
+    parser.add_argument("--env_name", type=str, default="CartPole-v1")
+    parser.add_argument(
+        "--no_alpha_tune", dest="alph_tune", default=True, action="store_false"
+    )
     # Training related arguments here
+    parser.add_argument("--rand_seed", type=int, default=1)
     parser.add_argument("--log_dir", type=str, default=None)
     parser.add_argument("-n", "--num_episodes", type=int, default=1000)
     parser.add_argument("-lr", "--learning_rate", type=float, default=1e-3)

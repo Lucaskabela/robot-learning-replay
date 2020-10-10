@@ -25,7 +25,7 @@ class SAC(nn.Module):
     discrete
     """
 
-    def __init__(self, env, device, gamma=0.99, tau=1e-2, disc=False):
+    def __init__(self, env, device, gamma=0.99, tau=1e-2, at=True, disc=False):
         super(SAC, self).__init__()
         if disc:
             self.actor = DiscreteActor(env)
@@ -38,10 +38,10 @@ class SAC(nn.Module):
         self.tgt_q2 = SoftQNetwork(env).eval()
 
         tgt = torch.Tensor(env.action_space.shape).to(device)
-        self.target_entropy = -torch.prod(tgt)
-
+        self.target_entropy = -torch.prod(tgt).item()
+        self.adjust_alpha = at
         self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
-        self.alpha = self.log_alpha.exp()
+        self.alpha = self.log_alpha.detach().exp()
         self.gamma = gamma
         self.tau = tau
 
@@ -141,15 +141,17 @@ class SAC(nn.Module):
         Calculates the loss for the entropy temperature parameter.
         log_probs come from the return value of calculate_actor_loss
         """
-        inner_prod = (-log_probs - self.target_entropy).detach()
+        with torch.no_grad():
+            inner_prod = -log_probs - self.target_entropy
         alpha_loss = (self.log_alpha * inner_prod).mean()
         return alpha_loss
 
     def update_entropy(self, alpha_loss):
-        self.entropy_opt.zero_grad()
-        alpha_loss.backward()
-        self.entropy_opt.step()
-        self.alpha = self.log_alpha.exp()
+        if self.adjust_alpha:
+            self.entropy_opt.zero_grad()
+            alpha_loss.backward()
+            self.entropy_opt.step()
+            self.alpha = self.log_alpha.detach().exp()
 
     def device(self):
         return next(self.parameters()).device
@@ -316,8 +318,6 @@ class DiscreteActor(nn.Module):
         env,
         hidden=[128, 128],
         dropout=0.0,
-        log_std_min=-20,
-        log_std_max=2,
     ):
         super(DiscreteActor, self).__init__()
         self.state_space = env.observation_space.shape[0]
