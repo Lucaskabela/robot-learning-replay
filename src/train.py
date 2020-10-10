@@ -51,11 +51,6 @@ def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=100):
             log_action_probabilities.detach().mean().item(),
             step,
         )
-    # Save and intialize episode history counters
-    sac.actor.loss_history.append(actor_loss.item())
-    sac.actor.reset()
-    del sac.actor.rewards[:]
-    del sac.actor.saved_log_probs[:]
 
 
 def plot_success(policy):
@@ -83,8 +78,8 @@ def plot_success(policy):
     ax2.set_ylabel("Episode Length")
 
     fig.tight_layout(pad=2)
-    plt.show()
     plt.savefig("sac.png")
+    plt.show()
 
 
 def init_environment(env_name):
@@ -154,7 +149,6 @@ def train(args):
             state = next_state
             reward_cum += reward
             # Save reward
-            sac.actor.rewards.append(reward)
             if done:
                 break
             step += 1
@@ -179,4 +173,7 @@ def train(args):
             print("Solved after {} episodes!".format(episode))
             break
 
+    fname = "results.out"
+    data = np.array(sac.actor.reward_history)
+    np.savetxt(fname, data)
     plot_success(sac.actor)

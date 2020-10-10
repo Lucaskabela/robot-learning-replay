@@ -240,13 +240,6 @@ class Actor(nn.Module):
 
         # Overall reward and loss history
         self.reward_history = []
-        self.loss_history = []
-        self.reset()
-
-    def reset(self):
-        # Episode policy and reward history
-        self.saved_log_probs = []
-        self.rewards = []
 
     def init_weights(self, init_w=3e-3):
         """
@@ -340,13 +333,6 @@ class DiscreteActor(nn.Module):
 
         # Overall reward and loss history
         self.reward_history = []
-        self.loss_history = []
-        self.reset()
-
-    def reset(self):
-        # Episode policy and reward history
-        self.saved_log_probs = []
-        self.rewards = []
 
     def init_weights(self, init_w=3e-3):
         """
