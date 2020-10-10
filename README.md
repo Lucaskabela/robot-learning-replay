@@ -22,13 +22,13 @@ Note, conda will not have gym installed - this must be done through pip
  - [x] Fill in Boilerplate code for training, models
  - [x] Get environments setup and random policy working
  - [x] Scope out future work for project
- - [ ] Get SAC model set up
+ - [x] Get SAC model set up
  - [ ] Get experience replay base versions (HER + PER)
  - [ ] Run some baselines
  
- ## Using in Colab
-import os
-os.environ['USER'] = <name>
-os.environ['PASS'] = <password>
-os.environ['REPO'] = <repo>
-!git clone https://$USER:$PASS@github.com/$USER/$REPO.git
+ ## Expiremental notes
+
+ - Read literature, decide on sizes/hyperparameters to use, how many trails (3 - 5)
+ - Random seeds: 1, 42, 169, 0, 405
+ - Decide ER hyperparameters to use 
+ - Look into any modifications (?)
