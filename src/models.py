@@ -6,14 +6,13 @@ AUTHOR: Lucas Kabela
 PURPOSE: This file defines Neural Network Architecture and other models
         which will be evaluated in this expirement
 """
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
 # from os import path
-from torch.distributions import Categorical, Normal
+from torch.distributions import Normal
 from utils import GumbelSoftmax, guard_q_actions
 
 
@@ -26,7 +25,7 @@ class SAC(nn.Module):
     discrete
     """
 
-    def __init__(self, env, tgt_ent=.98, gamma=0.99, tau=1e-2, disc=False):
+    def __init__(self, env, gamma=0.99, tau=1e-2, disc=False):
         super(SAC, self).__init__()
         if disc:
             self.actor = DiscreteActor(env)
@@ -38,7 +37,9 @@ class SAC(nn.Module):
         self.tgt_q1 = SoftQNetwork(env).eval()
         self.tgt_q2 = SoftQNetwork(env).eval()
 
-        self.target_entropy = -np.log(1.0 / env.action_space.n) * tgt_ent
+        tgt = torch.Tensor(env.action_space.shape).to(self.device())
+        self.target_entropy = -torch.prod(tgt).item()
+
         self.log_alpha = torch.zeros(1, requires_grad=True)
         self.alpha = self.log_alpha.detach().exp()
         self.gamma = gamma
@@ -91,7 +92,8 @@ class SAC(nn.Module):
             advantage = self.actor.evaluate(next_states)
             next_actions, next_probs, _, _, _ = advantage
             if self.discrete:
-                next_actions = guard_q_actions(next_actions, self.tgt_q1.action_space)
+                act_size = self.tgt_q1.action_space
+                next_actions = guard_q_actions(next_actions, act_size)
             next_q1 = self.tgt_q1(next_states, next_actions)
             next_q2 = self.tgt_q2(next_states, next_actions)
 
@@ -119,7 +121,8 @@ class SAC(nn.Module):
     def calc_actor_loss(self, states):
         # Train actor network
         if self.discrete:
-            actions, log_probs, _, _, _ = self.actor.evaluate(states, reparam=True)
+            res = self.actor.evaluate(states, reparam=True)
+            actions, log_probs, _, _, _ = res
         else:
             actions, log_probs, _, _, _ = self.actor.evaluate(states)
         q1 = self.soft_q1(states, actions)
@@ -140,9 +143,9 @@ class SAC(nn.Module):
         log_probs come from the return value of calculate_actor_loss
         """
         self.log_alpha = self.log_alpha.to(self.device())
-        alpha_loss = -(
-            self.log_alpha * (log_probs + self.target_entropy).detach()
-        ).mean()
+        inner_prod = (-log_probs - self.target_entropy).detach()
+        alpha_loss = (self.log_alpha * inner_prod).mean()
+        print(alpha_loss)
         return alpha_loss
 
     def update_entropy(self, alpha_loss):
