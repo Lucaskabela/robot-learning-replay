@@ -41,7 +41,7 @@ class SAC(nn.Module):
         self.target_entropy = -torch.prod(tgt)
 
         self.log_alpha = torch.zeros(1, requires_grad=True)
-        self.alpha = self.log_alpha.detach().exp()
+        self.alpha = self.log_alpha.exp()
         self.gamma = gamma
         self.tau = tau
 
@@ -143,11 +143,7 @@ class SAC(nn.Module):
         log_probs come from the return value of calculate_actor_loss
         """
         self.log_alpha = self.log_alpha.to(self.device())
-        print(self.target_entropy.shape)
-        print(log_probs.shape)
         inner_prod = (-log_probs - self.target_entropy).detach()
-        print(inner_prod.shape)
-        print(inner_prod)
         print(self.log_alpha)
         alpha_loss = (self.log_alpha * inner_prod).mean()
         print(alpha_loss)
@@ -157,7 +153,7 @@ class SAC(nn.Module):
         self.entropy_opt.zero_grad()
         alpha_loss.backward()
         self.entropy_opt.step()
-        self.alpha = self.log_alpha.detach().exp()
+        self.alpha = self.log_alpha.exp()
 
     def device(self):
         return next(self.parameters()).device
