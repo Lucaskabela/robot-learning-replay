@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.utils.tensorboard as tb
 from replay import ReplayBuffer
-from utils import guard_q_actions, get_one_hot_np
+from utils import get_one_hot_np
 
 
 def batch_to_torch_device(batch, device):
@@ -37,6 +37,7 @@ def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=100):
     sac.update_actor(actor_loss)
 
     alpha_loss = sac.calc_entropy_tuning_loss(log_action_probabilities)
+    print(alpha_loss)
     sac.update_entropy(alpha_loss)
     sac.soft_copy()
 
@@ -83,8 +84,8 @@ def plot_success(policy):
     ax2.set_ylabel("Episode Length")
 
     fig.tight_layout(pad=2)
-    plt.savefig("sac.png")
     plt.show()
+    plt.savefig("sac.png")
 
 
 def train(args):
@@ -92,6 +93,7 @@ def train(args):
     env = gym.make("CartPole-v1")
     env.seed(1)
     torch.manual_seed(1)
+    np.random.seed(1)
     if args.log_dir is not None:
         writer = tb.SummaryWriter(log_dir=args.log_dir)
     else:
@@ -140,7 +142,7 @@ def train(args):
         scores.append(time)
         mean_score = np.mean(scores[-100:])
 
-        if episode + 1 % 50 == 0:
+        if episode % 50 == 0:
             print("Episode {} Avg length {:.2f}".format(episode, mean_score))
 
         if mean_score > env.spec.reward_threshold:

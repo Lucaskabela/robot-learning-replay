@@ -26,7 +26,7 @@ class SAC(nn.Module):
     discrete
     """
 
-    def __init__(self, env, tgt_ent=None, gamma=0.99, tau=1e-2, disc=False):
+    def __init__(self, env, tgt_ent=.98, gamma=0.99, tau=1e-2, disc=False):
         super(SAC, self).__init__()
         if disc:
             self.actor = DiscreteActor(env)
@@ -38,9 +38,7 @@ class SAC(nn.Module):
         self.tgt_q1 = SoftQNetwork(env).eval()
         self.tgt_q2 = SoftQNetwork(env).eval()
 
-        self.target_entropy = -np.log(1.0 / env.action_space.n)
-        if tgt_ent is not None:
-            self.target_entropy *= tgt_ent
+        self.target_entropy = -np.log(1.0 / env.action_space.n) * tgt_ent
         self.log_alpha = torch.zeros(1, requires_grad=True)
         self.alpha = self.log_alpha.detach().exp()
         self.gamma = gamma
@@ -143,7 +141,7 @@ class SAC(nn.Module):
         """
         self.log_alpha = self.log_alpha.to(self.device())
         alpha_loss = -(
-            self.log_alpha * (log_probs.detach() + self.target_entropy)
+            self.log_alpha * (log_probs + self.target_entropy).detach()
         ).mean()
         return alpha_loss
 
@@ -389,72 +387,6 @@ class DiscreteActor(nn.Module):
 
     def device(self):
         return next(self.parameters()).device
-
-
-class Policy(nn.Module):
-    def __init__(self, env):
-        super(Policy, self).__init__()
-        state_space = env.observation_space.shape[0]
-        action_space = env.action_space.n
-        num_hidden = 128
-
-        self.l1 = nn.Linear(state_space, num_hidden, bias=False)
-        self.l2 = nn.Linear(num_hidden, action_space, bias=False)
-
-        # Overall reward and loss history
-        self.reward_history = []
-        self.loss_history = []
-        self.reset()
-
-    def reset(self):
-        # Episode policy and reward history
-        self.saved_log_probs = []
-        self.rewards = []
-
-    def forward(self, x):
-        model = torch.nn.Sequential(
-            self.l1, nn.Dropout(p=0.5), nn.ReLU(), self.l2, nn.Softmax(dim=-1)
-        )
-        return model(x)
-
-    def device(self):
-        if next(self.parameters()).is_cuda:
-            return torch.device("cuda")
-        else:
-            return torch.device("cpu")
-
-    def predict(self, state):
-        # Select an action (0 or 1) by running policy model
-        # and choosing based on the probabilities in state
-        device = self.device()
-        state = torch.from_numpy(state).type(torch.FloatTensor).to(device)
-        action_probs = self(state)
-        distribution = Categorical(action_probs)
-        action = distribution.sample()
-
-        # Add log probability of our chosen action to our history
-        self.saved_log_probs.append(distribution.log_prob(action))
-
-        return action
-
-
-class Value(nn.Module):
-    def __init__(self, env):
-        super(Value, self).__init__()
-        state_space = env.observation_space.shape[0]
-        num_hidden = 128
-
-        self.l1 = nn.Linear(state_space, num_hidden, bias=False)
-        self.l2 = nn.Linear(num_hidden, 1, bias=False)
-
-    def forward(self, x):
-        model = torch.nn.Sequential(
-            self.l1,
-            nn.Dropout(p=0.5),
-            nn.ReLU(),
-            self.l2,
-        )
-        return model(x)
 
 
 def save_model(model):
