@@ -37,7 +37,6 @@ def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=100):
     sac.update_actor(actor_loss)
 
     alpha_loss = sac.calc_entropy_tuning_loss(log_action_probabilities)
-    print(alpha_loss)
     sac.update_entropy(alpha_loss)
     sac.soft_copy()
 
