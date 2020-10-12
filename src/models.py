@@ -291,7 +291,6 @@ class Actor(nn.Module):
         """
         Returns an action given a state
         """
-        state = torch.FloatTensor(state).unsqueeze(0).to(self.device())
         mean, log_std = self.forward(state)
         std = log_std.exp()
 
