@@ -13,7 +13,7 @@ import torch.optim as optim
 
 # from os import path
 from torch.distributions import Normal
-from utils import GumbelSoftmax, guard_q_actions
+from utils import GumbelSoftmax, guard_q_actions, get_action_dim
 
 
 class SAC(nn.Module):
@@ -94,9 +94,10 @@ class SAC(nn.Module):
             if self.discrete:
                 act_size = self.tgt_q1.action_space
                 next_actions = guard_q_actions(next_actions, act_size)
+            else:
+                next_probs = next_probs.squeeze(1)
             next_q1 = self.tgt_q1(next_states, next_actions)
             next_q2 = self.tgt_q2(next_states, next_actions)
-
             min_q_next = torch.min(next_q1, next_q2) - self.alpha * next_probs
             target_q_value = rewards + (1 - done) * self.gamma * min_q_next
 
@@ -167,7 +168,7 @@ class SoftQNetwork(nn.Module):
     def __init__(self, env, hidden=[128, 128], dropout=0.0):
         super(SoftQNetwork, self).__init__()
         self.state_space = env.observation_space.shape[0]
-        self.action_space = env.action_space.n
+        self.action_space = get_action_dim(env)
         self.hidden = hidden
         self.l1 = nn.Linear(self.state_space + self.action_space, hidden[0])
         self.l2 = nn.Linear(hidden[0], hidden[1])
@@ -219,7 +220,7 @@ class Actor(nn.Module):
     ):
         super(Actor, self).__init__()
         self.state_space = env.observation_space.shape[0]
-        self.action_space = env.action_space.n
+        self.action_space = get_action_dim(env)
         self.hidden = hidden
         self.log_std_min = log_std_min
         self.log_std_max = log_std_max
@@ -314,6 +315,7 @@ class DiscreteActor(nn.Module):
     ):
         super(DiscreteActor, self).__init__()
         self.state_space = env.observation_space.shape[0]
+        # always discrete, so never box
         self.action_space = env.action_space.n
         self.hidden = hidden
 

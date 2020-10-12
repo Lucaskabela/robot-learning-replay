@@ -12,6 +12,13 @@ import torch
 import torch.nn.functional as F
 
 
+def get_action_dim(env):
+    if type(env.action_space) is gym.spaces.Box:
+        return env.action_space.shape[0]
+    else:
+        return env.action_space.n
+
+
 def guard_q_actions(actions, dim):
     """Guard to convert actions to one-hot for input to Q-network"""
     actions = F.one_hot(actions.long(), dim).float()
@@ -26,7 +33,7 @@ def get_one_hot_np(tgt, dim):
 
 # Taken from https://github.com/vaishak2future/sac/blob/master/sac.ipynb
 class NormalizedActions(gym.ActionWrapper):
-    def _action(self, action):
+    def action(self, action):
         low = self.action_space.low
         high = self.action_space.high
 
@@ -35,7 +42,7 @@ class NormalizedActions(gym.ActionWrapper):
 
         return action
 
-    def _reverse_action(self, action):
+    def reverse_action(self, action):
         low = self.action_space.low
         high = self.action_space.high
 
