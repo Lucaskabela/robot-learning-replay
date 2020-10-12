@@ -118,8 +118,9 @@ def init_logger(log_dir=None):
 
 
 def train(args):
-    print("Starting training!")
     env, discrete = init_environment(env_name=args.env_name)
+    thresh = env.spec.reward_threshold
+    print("Starting training!  Need {} to solve".format(thresh))
     seed_random(env, args.rand_seed)
     device = init_device()
     writer = init_logger(log_dir=args.log_dir)
@@ -134,7 +135,7 @@ def train(args):
         # Reset environment and record the starting state
         state = env.reset()
 
-        for time in range(1000):
+        for time in range(args.time_limit):
             state = torch.from_numpy(state).float().to(device)
             action = sac.get_action(state)
             # Uncomment to render the visual state in a window
@@ -164,10 +165,10 @@ def train(args):
         reward_history.append(reward_cum)
         mean_score = np.mean(reward_history[-100:])
 
-        if episode % 50 == 0:
+        if episode % 5 == 0:
             print("Episode {} Avg reward {:.2f}".format(episode, mean_score))
 
-        if mean_score > env.spec.reward_threshold:
+        if mean_score > thresh:
             print("Solved after {} episodes!".format(episode))
             print("And {} environment steps".format(step))
             break
