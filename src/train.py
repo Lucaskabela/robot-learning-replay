@@ -126,7 +126,7 @@ def train(args):
 
     sac = SAC(env, device, at=args.alph_tune, disc=discrete).to(device)
     sac.init_opt(lr=args.learning_rate)
-    scores = []
+    reward_history = []
     reward_cum = 0
     replay = ReplayBuffer(10000, sac.actor.state_space, sac.actor.action_space)
     step = 0
@@ -161,19 +161,18 @@ def train(args):
                 )
 
         # Calculate score to determine when the environment has been solved
-        scores.append(time)
-        sac.actor.reward_history.append(reward_cum)
-        mean_score = np.mean(scores[-100:])
+        reward_history.append(reward_cum)
+        mean_score = np.mean(reward_history[-100:])
 
         if episode % 50 == 0:
-            print("Episode {} Avg length {:.2f}".format(episode, mean_score))
+            print("Episode {} Avg reward {:.2f}".format(episode, mean_score))
 
-        # if mean_score > env.spec.reward_threshold:
-        #     print("Solved after {} episodes!".format(episode))
-        #     print("And {} learning steps".format(step))
-        #     break
+        if mean_score > env.spec.reward_threshold:
+            print("Solved after {} episodes!".format(episode))
+            print("And {} environment steps".format(step))
+            break
 
     fname = "results.out"
-    data = np.array(sac.actor.reward_history)
+    data = np.array(reward_history)
     np.savetxt(fname, data)
     plot_success(sac.actor)
