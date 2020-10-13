@@ -134,7 +134,7 @@ def train(args):
     for episode in range(args.num_episodes):
         # Reset environment and record the starting state
         state = env.reset()
-
+        reward_cum = 0
         for time in range(args.time_limit):
             state = torch.from_numpy(state).float().to(device)
             action = sac.get_action(state)
