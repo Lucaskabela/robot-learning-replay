@@ -39,6 +39,8 @@ class SAC(nn.Module):
 
         tgt = torch.Tensor(env.action_space.shape).to(device)
         self.target_entropy = -torch.prod(tgt).item()
+        print(tgt)
+        print(self.target_entropy)
         self.adjust_alpha = at
         self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
         self.alpha = self.log_alpha.detach().exp()
