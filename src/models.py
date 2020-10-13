@@ -39,8 +39,6 @@ class SAC(nn.Module):
 
         tgt = torch.Tensor(env.action_space.shape).to(device)
         self.target_entropy = -torch.prod(tgt).item()
-        print(tgt)
-        print(self.target_entropy)
         self.adjust_alpha = at
         self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
         self.alpha = self.log_alpha.detach().exp()
@@ -105,8 +103,8 @@ class SAC(nn.Module):
 
         p_q1 = self.soft_q1(states, actions)
         p_q2 = self.soft_q2(states, actions)
-        q_value_loss1 = F.mse_loss(p_q1, target_q_value)
-        q_value_loss2 = F.mse_loss(p_q2, target_q_value)
+        q_value_loss1 = 0.5 * F.mse_loss(p_q1, target_q_value)
+        q_value_loss2 = 0.5 * F.mse_loss(p_q2, target_q_value)
         return q_value_loss1, q_value_loss2
 
     def update_critics(self, q1_loss, q2_loss, clip=5.0):
@@ -122,11 +120,8 @@ class SAC(nn.Module):
 
     def calc_actor_loss(self, states):
         # Train actor network
-        if self.discrete:
-            res = self.actor.evaluate(states, reparam=True)
-            actions, log_probs, _, _, _ = res
-        else:
-            actions, log_probs, _, _, _ = self.actor.evaluate(states)
+        res = self.actor.evaluate(states, reparam=True)
+        actions, log_probs, _, _, _ = res
         q1 = self.soft_q1(states, actions)
         q2 = self.soft_q1(states, actions)
         min_q = torch.min(q1, q2)
@@ -272,7 +267,7 @@ class Actor(nn.Module):
 
         return mean, log_std
 
-    def evaluate(self, state, epsilon=1e-6):
+    def evaluate(self, state, reparam=False, epsilon=1e-6):
         """
         Evaluate a state, returning action, log probs,
         mean, log_std, and z, the sampled action
@@ -281,7 +276,10 @@ class Actor(nn.Module):
         std = log_std.exp()
 
         normal = Normal(mean, std)
-        z = normal.rsample()
+        if reparam:
+            z = normal.rsample()
+        else:
+            z = normal.sample()
         action = torch.tanh(z)
 
         log_prob = normal.log_prob(z) - torch.log(1 - action.pow(2) + epsilon)
@@ -297,7 +295,7 @@ class Actor(nn.Module):
         std = log_std.exp()
 
         normal = Normal(mean, std)
-        z = normal.rsample()
+        z = normal.sample()
         action = torch.tanh(z)
 
         action = action.detach().cpu().numpy()

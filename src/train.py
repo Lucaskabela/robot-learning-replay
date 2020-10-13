@@ -9,7 +9,6 @@ import gym
 from models import SAC
 import numpy as np
 import pandas as pd
-import math
 import matplotlib.pyplot as plt
 import torch
 import torch.utils.tensorboard as tb
@@ -25,17 +24,13 @@ def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=100):
     batch = replay.sample(batch_size)
     batch = batch_to_torch_device(batch, sac.device())
     states, actions, reward, next_states, done = batch
-    if not math.isnan(reward.std()):
-        stable_denom = reward.std() + np.finfo(np.float32).eps
-        reward = (reward - reward.mean()) / stable_denom
-
     q_loss = sac.calc_critic_loss(states, actions, reward, next_states, done)
     sac.update_critics(q_loss[0], q_loss[1])
 
-    actor_loss, log_action_probabilities = sac.calc_actor_loss(states)
+    actor_loss, log_probs = sac.calc_actor_loss(states)
     sac.update_actor(actor_loss)
 
-    alpha_loss = sac.calc_entropy_tuning_loss(log_action_probabilities)
+    alpha_loss = sac.calc_entropy_tuning_loss(log_probs)
     sac.update_entropy(alpha_loss)
     sac.soft_copy()
 
@@ -47,21 +42,21 @@ def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=100):
         writer.add_scalar("stats/alpha", sac.alpha, step)
         writer.add_scalar(
             "stats/entropy",
-            log_action_probabilities.detach().mean().item(),
+            log_probs.detach().mean().item(),
             step,
         )
 
 
-def plot_success(policy):
+def plot_success(reward_history):
     # number of episodes for rolling average
     window = 50
 
     fig, ((ax1), (ax2)) = plt.subplots(2, 1, sharey=True, figsize=[9, 9])
-    rolling_mean = pd.Series(policy.reward_history).rolling(window).mean()
-    std = pd.Series(policy.reward_history).rolling(window).std()
+    rolling_mean = pd.Series(reward_history).rolling(window).mean()
+    std = pd.Series(reward_history).rolling(window).std()
     ax1.plot(rolling_mean)
     ax1.fill_between(
-        range(len(policy.reward_history)),
+        range(len(reward_history)),
         rolling_mean - std,
         rolling_mean + std,
         color="blue",
@@ -71,7 +66,7 @@ def plot_success(policy):
     ax1.set_xlabel("Episode")
     ax1.set_ylabel("Episode Length")
 
-    ax2.plot(policy.reward_history)
+    ax2.plot(reward_history)
     ax2.set_title("Episode Length")
     ax2.set_xlabel("Episode")
     ax2.set_ylabel("Episode Length")
@@ -183,4 +178,4 @@ def train(args):
     fname = "results.out"
     data = np.array(reward_history)
     np.savetxt(fname, data)
-    plot_success(sac.actor)
+    plot_success(reward_history)
