@@ -168,7 +168,7 @@ def train(args):
         if episode % 5 == 0:
             print("Episode {} Avg reward {:.2f}".format(episode, mean_score))
 
-        if mean_score > thresh:
+        if thresh is not None and mean_score > thresh:
             print("Solved after {} episodes!".format(episode))
             print("And {} environment steps".format(step))
             break

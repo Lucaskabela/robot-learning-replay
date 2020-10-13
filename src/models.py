@@ -143,8 +143,8 @@ class SAC(nn.Module):
         log_probs come from the return value of calculate_actor_loss
         """
         with torch.no_grad():
-            inner_prod = -log_probs - self.target_entropy
-        alpha_loss = (self.log_alpha * inner_prod).mean()
+            inner_prod = log_probs + self.target_entropy
+        alpha_loss = -(self.log_alpha * inner_prod).mean()
         return alpha_loss
 
     def update_entropy(self, alpha_loss):
