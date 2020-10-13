@@ -25,7 +25,7 @@ class SAC(nn.Module):
     discrete
     """
 
-    def __init__(self, env, device, gamma=0.99, tau=1e-2, at=True, disc=False):
+    def __init__(self, env, device, gamma=0.99, tau=5e-3, at=True, disc=False):
         super(SAC, self).__init__()
         if disc:
             self.actor = DiscreteActor(env)
@@ -281,7 +281,7 @@ class Actor(nn.Module):
         std = log_std.exp()
 
         normal = Normal(mean, std)
-        z = normal.sample()
+        z = normal.rsample()
         action = torch.tanh(z)
 
         log_prob = normal.log_prob(z) - torch.log(1 - action.pow(2) + epsilon)
@@ -297,7 +297,7 @@ class Actor(nn.Module):
         std = log_std.exp()
 
         normal = Normal(mean, std)
-        z = normal.sample()
+        z = normal.rsample()
         action = torch.tanh(z)
 
         action = action.detach().cpu().numpy()
