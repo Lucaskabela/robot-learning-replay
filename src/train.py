@@ -164,6 +164,9 @@ def train(args):
         # Calculate score to determine when the environment has been solved
         reward_history.append(reward_cum)
         mean_score = np.mean(reward_history[-100:])
+        if writer is not None:
+            writer.add_scalar("stats/reward", reward_cum, step)
+            writer.add_scalar("stats/avg_reward", mean_score, step)
 
         if episode % 5 == 0:
             print("Episode {} Avg reward {:.2f}".format(episode, mean_score))
