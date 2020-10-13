@@ -32,3 +32,7 @@ Note, conda will not have gym installed - this must be done through pip
  - Random seeds: 1, 42, 169, 0, 405
  - Decide ER hyperparameters to use 
  - Look into any modifications (?)
+
+
+ ## Weird windows thing: 
+ PATH="~/opt/bin${PATH:+:${PATH}}"

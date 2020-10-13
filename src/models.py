@@ -167,7 +167,7 @@ class SoftQNetwork(nn.Module):
     Q value
     """
 
-    def __init__(self, env, hidden=[128, 128], dropout=0.0):
+    def __init__(self, env, hidden=[256, 156], dropout=0.0):
         super(SoftQNetwork, self).__init__()
         self.state_space = env.observation_space.shape[0]
         self.action_space = get_action_dim(env)
@@ -215,7 +215,7 @@ class Actor(nn.Module):
     def __init__(
         self,
         env,
-        hidden=[128, 128],
+        hidden=[256, 256],
         dropout=0.0,
         log_std_min=-20,
         log_std_max=2,
@@ -311,7 +311,7 @@ class DiscreteActor(nn.Module):
     def __init__(
         self,
         env,
-        hidden=[128, 128],
+        hidden=[256, 256],
         dropout=0.0,
     ):
         super(DiscreteActor, self).__init__()

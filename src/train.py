@@ -169,7 +169,11 @@ def train(args):
             writer.add_scalar("stats/avg_reward", mean_score, step)
 
         if episode % 5 == 0:
-            print("Episode {} Avg reward {:.2f}".format(episode, mean_score))
+            print(
+                "Episode {} Steps {} Reward {:.2f} Avg reward {:.2f}".format(
+                    episode, step, reward_history[-1], mean_score
+                )
+            )
 
         if thresh is not None and mean_score > thresh:
             print("Solved after {} episodes!".format(episode))

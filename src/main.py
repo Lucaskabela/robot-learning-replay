@@ -47,7 +47,7 @@ def _parse_args():
     parser.add_argument("-lr", "--learning_rate", type=float, default=1e-3)
     parser.add_argument("-c", "--continue_training", action="store_true")
     parser.add_argument("--batch_size", type=int, default=256)
-    parser.add_argument("--buff_size", type=int, default=1e5)
+    parser.add_argument("--buff_size", type=int, default=1e6)
 
     args = parser.parse_args()
     return args
