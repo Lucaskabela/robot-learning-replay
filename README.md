@@ -26,13 +26,16 @@ Note, conda will not have gym installed - this must be done through pip
  - [ ] Get experience replay base versions (HER + PER)
  - [ ] Run some baselines
  
- ## Expiremental notes
+## Expiremental notes
 
- - Read literature, decide on sizes/hyperparameters to use, how many trails (3 - 5)
  - Random seeds: 1, 42, 169, 0, 405
- - Decide ER hyperparameters to use 
- - Look into any modifications (?)
+ - Look into any modifications
+ - Get working implementation of SAC on HalfCheetah-v2
 
 
- ## Weird windows thing: 
- PATH="~/opt/bin${PATH:+:${PATH}}"
+## Weird windows thing: 
+
+PATH="C:\Users\lukei\.mujoco\mujoco200\bin${PATH:+:${PATH}}"
+
+PATH="C:\Users\lukei\.mujoco\mjpro150\bin${PATH:+:${PATH}}"
+
