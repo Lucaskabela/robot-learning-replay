@@ -176,8 +176,9 @@ def train(args):
                     batch_size=args.batch_size,
                 )
 
-        if step > 0 and step % args.eval_frequency == 0:
-            num = step / args.eval_frequency
+        if step > 0 and step % args.eval_freq == 0:
+            sac.eval()
+            num = step / args.eval_freq
             curr_reward = evaluate_SAC(args, env, sac, writer, step)
             eval_history.append((num, curr_reward))
             if curr_reward > max_reward:
@@ -185,6 +186,8 @@ def train(args):
                 max_reward = curr_reward
                 sac.save()
             print("Steps {} Eval Reward {:.2f}".format(step, curr_reward))
+            sac.train()
+
         # Calculate score to determine when the environment has been solved
         reward_history.append(reward_cum)
         mean_score = np.mean(reward_history[-100:])
