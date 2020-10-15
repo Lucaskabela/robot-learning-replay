@@ -122,7 +122,7 @@ def train(args):
     device = init_device()
     writer = init_logger(log_dir=args.log_dir)
 
-    sac = SAC(env, device, at=args.alph_tune, disc=discrete).to(device)
+    sac = SAC(env, device, at=args.alph_tune, dis=discrete).to(device)
     sac.init_opt(lr=args.learning_rate)
     reward_history = []
     reward_cum = 0

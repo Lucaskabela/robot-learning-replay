@@ -25,13 +25,13 @@ class SAC(nn.Module):
     discrete
     """
 
-    def __init__(self, env, device, gamma=0.99, tau=5e-3, at=True, disc=False):
+    def __init__(self, env, device, gamma=0.99, tau=0.005, at=True, dis=False):
         super(SAC, self).__init__()
-        if disc:
+        if dis:
             self.actor = DiscreteActor(env)
         else:
             self.actor = Actor(env)
-        self.discrete = disc
+        self.discrete = dis
         self.soft_q1 = SoftQNetwork(env)
         self.soft_q2 = SoftQNetwork(env)
         self.tgt_q1 = SoftQNetwork(env).eval()
@@ -103,8 +103,8 @@ class SAC(nn.Module):
 
         p_q1 = self.soft_q1(states, actions)
         p_q2 = self.soft_q2(states, actions)
-        q_value_loss1 = F.mse_loss(p_q1, target_q_value)
-        q_value_loss2 = F.mse_loss(p_q2, target_q_value)
+        q_value_loss1 = F.mse_loss(p_q1, target_q_value.detach())
+        q_value_loss2 = F.mse_loss(p_q2, target_q_value.detach())
         return q_value_loss1, q_value_loss2
 
     def update_critics(self, q1_loss, q2_loss, clip=None):
@@ -143,7 +143,7 @@ class SAC(nn.Module):
         log_probs come from the return value of calculate_actor_loss
         """
         with torch.no_grad():
-            inner_prod = log_probs + self.target_entropy
+            inner_prod = (log_probs + self.target_entropy).detach()
         alpha_loss = -(self.log_alpha * inner_prod).mean()
         return alpha_loss
 
@@ -165,7 +165,7 @@ class SoftQNetwork(nn.Module):
     Q value
     """
 
-    def __init__(self, env, hidden=[256, 156], dropout=0.0):
+    def __init__(self, env, hidden=[256, 256], dropout=0.0):
         super(SoftQNetwork, self).__init__()
         self.state_space = env.observation_space.shape[0]
         self.action_space = get_action_dim(env)
