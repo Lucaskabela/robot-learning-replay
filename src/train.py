@@ -116,6 +116,8 @@ def train(args):
     env, discrete = init_environment(env_name=args.env_name)
     thresh = env.spec.reward_threshold
     print("Starting training!  Need {} to solve".format(thresh))
+    print(env)
+    # print(env.observation_space["observation"].shape[0])
     seed_random(env, args.rand_seed)
     device = init_device()
     writer = init_logger(log_dir=args.log_dir)
@@ -124,29 +126,26 @@ def train(args):
     sac.init_opt(lr=args.learning_rate)
     reward_history = []
     reward_cum = 0
-    replay = ReplayBuffer(10000, sac.actor.state_space, sac.actor.action_space)
+    replay = ReplayBuffer(args.buff_size, sac.actor.state_space, sac.actor.action_space)
     step = 0
-    for episode in range(args.num_episodes):
+    episode = 0
+    while step < args.steps and episode < args.num_episodes:
         # Reset environment and record the starting state
         state = env.reset()
         reward_cum = 0
-        for time in range(args.time_limit):
+        done = False
+        time = 0
+        while not done and time < args.time_limit:
             state = torch.from_numpy(state).float().to(device)
             action = sac.get_action(state)
-            # Uncomment to render the visual state in a window
-            # env.render()
-
-            # Step through environment using chosen action
             next_state, reward, done, _ = env.step(action)
             if sac.discrete:
                 action = get_one_hot_np(action, sac.soft_q1.action_space)
             replay.store(state.cpu(), action, next_state, reward, done)
             state = next_state
             reward_cum += reward
-            # Save reward
-            if done:
-                break
             step += 1
+            time += 1
             if len(replay) > args.batch_size:
                 update_SAC(
                     sac,
@@ -163,13 +162,13 @@ def train(args):
             writer.add_scalar("stats/reward", reward_cum, step)
             writer.add_scalar("stats/avg_reward", mean_score, step)
 
-        if episode % 5 == 0:
-            print(
-                "Episode {} Steps {} Reward {:.2f} Avg reward {:.2f}".format(
-                    episode, step, reward_history[-1], mean_score
-                )
+        print(
+            "Episode {} Steps {} Reward {:.2f} Avg reward {:.2f}".format(
+                episode, step, reward_history[-1], mean_score
             )
+        )
 
+        episode += 1
         if thresh is not None and mean_score > thresh:
             print("Solved after {} episodes!".format(episode))
             print("And {} environment steps".format(step))

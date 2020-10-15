@@ -103,19 +103,21 @@ class SAC(nn.Module):
 
         p_q1 = self.soft_q1(states, actions)
         p_q2 = self.soft_q2(states, actions)
-        q_value_loss1 = 0.5 * F.mse_loss(p_q1, target_q_value)
-        q_value_loss2 = 0.5 * F.mse_loss(p_q2, target_q_value)
+        q_value_loss1 = F.mse_loss(p_q1, target_q_value)
+        q_value_loss2 = F.mse_loss(p_q2, target_q_value)
         return q_value_loss1, q_value_loss2
 
-    def update_critics(self, q1_loss, q2_loss, clip=5.0):
+    def update_critics(self, q1_loss, q2_loss, clip=None):
         self.q1_opt.zero_grad()
         q1_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.soft_q1.parameters(), clip)
+        if clip is not None:
+            torch.nn.utils.clip_grad_norm_(self.soft_q1.parameters(), clip)
         self.q1_opt.step()
 
         self.q2_opt.zero_grad()
         q2_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.soft_q2.parameters(), clip)
+        if clip is not None:
+            torch.nn.utils.clip_grad_norm_(self.soft_q2.parameters(), clip)
         self.q2_opt.step()
 
     def calc_actor_loss(self, states):
@@ -128,10 +130,11 @@ class SAC(nn.Module):
         policy_loss = (self.alpha * log_probs - min_q).mean()
         return policy_loss, log_probs
 
-    def update_actor(self, actor_loss, clip=5.0):
+    def update_actor(self, actor_loss, clip=None):
         self.actor_opt.zero_grad()
         actor_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), clip)
+        if clip is not None:
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), clip)
         self.actor_opt.step()
 
     def calc_entropy_tuning_loss(self, log_probs):
@@ -170,6 +173,7 @@ class SoftQNetwork(nn.Module):
         self.l1 = nn.Linear(self.state_space + self.action_space, hidden[0])
         self.l2 = nn.Linear(hidden[0], hidden[1])
         self.l3 = nn.Linear(hidden[1], 1)
+        self.init_weights()
 
         self.ffn = nn.Sequential(
             self.l1,
@@ -180,20 +184,13 @@ class SoftQNetwork(nn.Module):
             nn.ReLU(),
             self.l3,
         )
-        self.init_weights()
 
-    def init_weights(self):
+    def init_weights(self, init_w=3e-3):
         """
-        Initialize weights with xaiver uniform, and
-        fill bias with 1 over n
+        Initialize weights with uniform
         """
-        over_n = 1 / (self.state_space + self.action_space)
-        nn.init.xavier_uniform_(self.l1.weight)
-        self.l1.bias.data.fill_(over_n)
-        nn.init.xavier_uniform_(self.l2.weight)
-        self.l2.bias.data.fill_(1 / self.hidden[0])
-        nn.init.xavier_uniform_(self.l3.weight)
-        self.l3.bias.data.fill_(1 / self.hidden[1])
+        self.l3.weight.data.uniform_(-init_w, init_w)
+        self.l3.bias.data.uniform_(-init_w, init_w)
 
     def forward(self, state, action):
         """
@@ -235,21 +232,12 @@ class Actor(nn.Module):
 
         self.mean_linear = nn.Linear(hidden[1], self.action_space)
         self.log_std_linear = nn.Linear(hidden[1], self.action_space)
-
-        # Overall reward and loss history
-        self.reward_history = []
+        self.init_weights()
 
     def init_weights(self, init_w=3e-3):
         """
-        Initialize weights with xaiver uniform, and
-        fill bias with 1 over n
+        Initialize weights with uniform
         """
-        over_n = 1 / (self.state_space + self.action_space)
-        nn.init.xavier_uniform_(self.l1.weight)
-        self.l1.bias.data.fill_(over_n)
-        nn.init.xavier_uniform_(self.l2.weight)
-        self.l2.bias.data.fill_(1 / self.hidden[0])
-
         self.mean_linear.weight.data.uniform_(-init_w, init_w)
         self.mean_linear.bias.data.uniform_(-init_w, init_w)
         self.log_std_linear.weight.data.uniform_(-init_w, init_w)
@@ -321,6 +309,7 @@ class DiscreteActor(nn.Module):
         self.l1 = nn.Linear(self.state_space, hidden[0])
         self.l2 = nn.Linear(hidden[0], hidden[1])
         self.l3 = nn.Linear(hidden[1], self.action_space)
+        self.init_weights()
         self.ffn = nn.Sequential(
             self.l1,
             nn.Dropout(p=dropout),
@@ -332,19 +321,10 @@ class DiscreteActor(nn.Module):
             nn.Softmax(dim=-1),
         )
 
-        # Overall reward and loss history
-        self.reward_history = []
-
     def init_weights(self, init_w=3e-3):
         """
-        Initialize weights with xaiver uniform, and
-        fill bias with 1 over n
+        Initialize weights with uniform
         """
-        over_n = 1 / (self.state_space + self.action_space)
-        nn.init.xavier_uniform_(self.l1.weight)
-        self.l1.bias.data.fill_(over_n)
-        nn.init.xavier_uniform_(self.l2.weight)
-        self.l2.bias.data.fill_(1 / self.hidden[0])
         self.l3.weight.data.uniform_(-init_w, init_w)
         self.l3.bias.data.uniform_(-init_w, init_w)
 
