@@ -20,7 +20,7 @@ def batch_to_torch_device(batch, device):
     return [torch.from_numpy(b).float().to(device) for b in batch]
 
 
-def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=100):
+def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=20):
     batch = replay.sample(batch_size)
     batch = batch_to_torch_device(batch, sac.device())
     states, actions, reward, next_states, done = batch
@@ -62,14 +62,14 @@ def plot_success(reward_history):
         color="blue",
         alpha=0.2,
     )
-    ax1.set_title("Episode Length Moving Average")
+    ax1.set_title("Episode Return Moving Average")
     ax1.set_xlabel("Episode")
-    ax1.set_ylabel("Episode Length")
+    ax1.set_ylabel("Average Return")
 
     ax2.plot(reward_history)
-    ax2.set_title("Episode Length")
+    ax2.set_title("Return per Episode")
     ax2.set_xlabel("Episode")
-    ax2.set_ylabel("Episode Length")
+    ax2.set_ylabel("Return")
 
     fig.tight_layout(pad=2)
     plt.savefig("sac.png")
@@ -112,6 +112,24 @@ def init_logger(log_dir=None):
     return writer
 
 
+def evaluate_SAC(args, env, sac, writer, step):
+    reward_cum = 0
+    done = False
+    state = env.reset()
+    device = sac.device()
+    time = 0
+    while not done and time < args.time_limit:
+        state = torch.from_numpy(state).float().to(device)
+        action = sac.get_action(state)
+        state, reward, done, _ = env.step(action)
+        reward_cum += reward
+        time += 1
+
+    if writer is not None:
+        writer.add_scalar("stats/eval_reward", reward_cum, step)
+    return reward_cum
+
+
 def train(args):
     env, discrete = init_environment(env_name=args.env_name)
     thresh = env.spec.reward_threshold
@@ -125,8 +143,11 @@ def train(args):
     sac = SAC(env, device, at=args.alph_tune, dis=discrete).to(device)
     sac.init_opt(lr=args.learning_rate)
     reward_history = []
+    eval_history = []
     reward_cum = 0
-    replay = ReplayBuffer(args.buff_size, sac.actor.state_space, sac.actor.action_space)
+    max_reward = 0
+    act_size = sac.actor.action_space
+    replay = ReplayBuffer(args.buff_size, sac.actor.state_space, act_size)
     step = 0
     episode = 0
     while step < args.steps and episode < args.num_episodes:
@@ -155,6 +176,15 @@ def train(args):
                     batch_size=args.batch_size,
                 )
 
+        if step > 0 and step % args.eval_frequency == 0:
+            num = step / args.eval_frequency
+            curr_reward = evaluate_SAC(args, env, sac, writer, step)
+            eval_history.append((num, curr_reward))
+            if curr_reward > max_reward:
+                print("Saving model...")
+                max_reward = curr_reward
+                sac.save()
+            print("Steps {} Eval Reward {:.2f}".format(step, curr_reward))
         # Calculate score to determine when the environment has been solved
         reward_history.append(reward_cum)
         mean_score = np.mean(reward_history[-100:])

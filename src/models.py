@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-# from os import path
+from os import path
 from torch.distributions import Normal
 from utils import GumbelSoftmax, guard_q_actions, get_action_dim
 
@@ -32,13 +32,18 @@ class SAC(nn.Module):
         else:
             self.actor = Actor(env)
         self.discrete = dis
-        self.soft_q1 = SoftQNetwork(env)
-        self.soft_q2 = SoftQNetwork(env)
+        self.soft_q1 = SoftQNetwork(env, name="q1")
+        self.soft_q2 = SoftQNetwork(env, name="q2")
         self.tgt_q1 = SoftQNetwork(env).eval()
         self.tgt_q2 = SoftQNetwork(env).eval()
 
         tgt = torch.Tensor(env.action_space.shape).to(device)
-        self.target_entropy = -torch.prod(tgt).item()
+        if self.discrete:
+            # Need positive entropy < log(action_size) if discrete
+            self.target_entropy = -torch.log((1.0 / tgt)) * 0.98
+            self.target_entropy = self.target_entropy.item()
+        else:
+            self.target_entropy = -torch.prod(tgt).item()
         self.adjust_alpha = at
         self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
         self.alpha = self.log_alpha.detach().exp()
@@ -157,15 +162,50 @@ class SAC(nn.Module):
     def device(self):
         return next(self.parameters()).device
 
+    def save(self):
+        self.soft_q1.save_model()
+        self.soft_q2.save_model()
+        self.actor.save_model()
 
-class SoftQNetwork(nn.Module):
+    def load(self):
+        self.soft_q1.load_model()
+        self.soft_q2.load_model()
+        self.actor.load_model()
+        self._freeze_tgt_networks()
+
+
+class BaseNetwork(nn.Module):
+    def __init__(self):
+        super(BaseNetwork, self).__init__()
+
+    def device(self):
+        return next(self.parameters()).device
+
+    def save_model(self):
+        fn = "ckpt/{}.th".format(self.name)
+        return torch.save(
+            self.state_dict(),
+            path.join(path.dirname(path.abspath(__file__)), fn),
+        )
+
+    def load_model(self):
+        fn = "ckpt/{}.th".format(self.name)
+        self.load_state_dict(
+            torch.load(
+                path.join(path.dirname(path.abspath(__file__)), fn),
+                map_location=self.device(),
+            )
+        )
+
+
+class SoftQNetwork(BaseNetwork):
     """
     Given an environment with |S| state dim and |A| actions, initialize
     a FFN with 2 hidden layers, and input size |S| + |A|.  Output a single
     Q value
     """
 
-    def __init__(self, env, hidden=[256, 256], dropout=0.0):
+    def __init__(self, env, hidden=[256, 256], dropout=0.0, name="q1"):
         super(SoftQNetwork, self).__init__()
         self.state_space = env.observation_space.shape[0]
         self.action_space = get_action_dim(env)
@@ -199,9 +239,6 @@ class SoftQNetwork(nn.Module):
         q_in = torch.cat([state, action], 1)
         return self.ffn(q_in).view(-1)
 
-    def device(self):
-        return next(self.parameters()).device
-
 
 class Actor(nn.Module):
     def __init__(
@@ -211,6 +248,7 @@ class Actor(nn.Module):
         dropout=0.0,
         log_std_min=-20,
         log_std_max=2,
+        name="sac",
     ):
         super(Actor, self).__init__()
         self.state_space = env.observation_space.shape[0]
@@ -289,17 +327,9 @@ class Actor(nn.Module):
         action = action.detach().cpu().numpy()
         return action[0]
 
-    def device(self):
-        return next(self.parameters()).device
 
-
-class DiscreteActor(nn.Module):
-    def __init__(
-        self,
-        env,
-        hidden=[256, 256],
-        dropout=0.0,
-    ):
+class DiscreteActor(BaseNetwork):
+    def __init__(self, env, hidden=[256, 256], dropout=0.0, name="sac_d"):
         super(DiscreteActor, self).__init__()
         self.state_space = env.observation_space.shape[0]
         # always discrete, so never box
@@ -351,26 +381,3 @@ class DiscreteActor(nn.Module):
         action = torch.distributions.Categorical(probs=action_probs).sample()
         action = action.detach().cpu().numpy()
         return action
-
-    def device(self):
-        return next(self.parameters()).device
-
-
-def save_model(model):
-    # if isinstance(model, Planner):
-    #     return save(
-    #       model.state_dict(), path.join(path.dirname(path.abspath(__file__)),
-    #       'planner.th')
-    #     )
-    raise ValueError("model type '%s' not supported!" % str(type(model)))
-
-
-def load_model(model):
-    r = None
-    # if isinstance(model, Planner):
-    #     r = Planner()
-    #     r.load_state_dict(load(
-    #         path.join(path.dirname(path.abspath(__file__)), 'planner.th'),
-    #         map_location=model.device)
-    #     )
-    return r
