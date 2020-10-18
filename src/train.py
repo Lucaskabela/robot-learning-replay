@@ -145,7 +145,7 @@ def train(args):
     reward_history = []
     eval_history = []
     reward_cum = 0
-    max_reward = 0
+    max_reward = -float("inf")
     act_size = sac.actor.action_space
     replay = ReplayBuffer(args.buff_size, sac.actor.state_space, act_size)
     step = 0
@@ -176,17 +176,18 @@ def train(args):
                     batch_size=args.batch_size,
                 )
 
-        if step > 0 and step % args.eval_freq == 0:
-            sac.eval()
-            num = step / args.eval_freq
-            curr_reward = evaluate_SAC(args, env, sac, writer, step)
-            eval_history.append((num, curr_reward))
-            if curr_reward > max_reward:
-                print("Saving model...")
-                max_reward = curr_reward
-                sac.save()
-            print("Steps {} Eval Reward {:.2f}".format(step, curr_reward))
-            sac.train()
+            if step > 0 and step % args.eval_freq == 0:
+                print("Evaluating")
+                sac.eval()
+                num = step / args.eval_freq
+                curr_reward = evaluate_SAC(args, env, sac, writer, step)
+                eval_history.append((num, curr_reward))
+                if curr_reward > max_reward:
+                    print("Saving model...")
+                    max_reward = curr_reward
+                    sac.save()
+                print("Steps {} Eval Reward {:.2f}".format(step, curr_reward))
+                sac.train()
 
         # Calculate score to determine when the environment has been solved
         reward_history.append(reward_cum)

@@ -182,14 +182,16 @@ class BaseNetwork(nn.Module):
         return next(self.parameters()).device
 
     def save_model(self):
-        fn = "ckpt/{}.th".format(self.name)
+        file_name = "{}.th".format(self.name)
+        fn = path.join("ckpt", file_name)
         return torch.save(
             self.state_dict(),
             path.join(path.dirname(path.abspath(__file__)), fn),
         )
 
     def load_model(self):
-        fn = "ckpt/{}.th".format(self.name)
+        file_name = "{}.th".format(self.name)
+        fn = path.join("ckpt", file_name)
         self.load_state_dict(
             torch.load(
                 path.join(path.dirname(path.abspath(__file__)), fn),
@@ -207,6 +209,7 @@ class SoftQNetwork(BaseNetwork):
 
     def __init__(self, env, hidden=[256, 256], dropout=0.0, name="q1"):
         super(SoftQNetwork, self).__init__()
+        self.name = name
         self.state_space = env.observation_space.shape[0]
         self.action_space = get_action_dim(env)
         self.hidden = hidden
@@ -240,7 +243,7 @@ class SoftQNetwork(BaseNetwork):
         return self.ffn(q_in).view(-1)
 
 
-class Actor(nn.Module):
+class Actor(BaseNetwork):
     def __init__(
         self,
         env,
@@ -251,6 +254,7 @@ class Actor(nn.Module):
         name="sac",
     ):
         super(Actor, self).__init__()
+        self.name = name
         self.state_space = env.observation_space.shape[0]
         self.action_space = get_action_dim(env)
         self.hidden = hidden
@@ -331,6 +335,7 @@ class Actor(nn.Module):
 class DiscreteActor(BaseNetwork):
     def __init__(self, env, hidden=[256, 256], dropout=0.0, name="sac_d"):
         super(DiscreteActor, self).__init__()
+        self.name = name
         self.state_space = env.observation_space.shape[0]
         # always discrete, so never box
         self.action_space = env.action_space.n
