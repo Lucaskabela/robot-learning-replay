@@ -6,6 +6,7 @@ AUTHOR: Lucas Kabela
 PURPOSE: This file defines Neural Network Architecture and other models
         which will be evaluated in this expirement
 """
+import pathlib
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -54,7 +55,8 @@ class SAC(nn.Module):
         self.tau = tau
 
     def get_action(self, state):
-        return self.actor.get_action(state)
+        with torch.no_grad():
+            return self.actor.get_action(state)
 
     def init_opt(self, opt="Adam", lr=3e-4):
         self.q1_opt = optim.Adam(self.soft_q1.parameters(), lr=lr)
@@ -185,8 +187,10 @@ class BaseNetwork(nn.Module):
         return next(self.parameters()).device
 
     def save_model(self):
+        dir = "ckpt"
+        pathlib.Path(dir).mkdir(parents=True, exist_ok=True)
         file_name = "{}.th".format(self.name)
-        fn = path.join("ckpt", file_name)
+        fn = path.join(dir, file_name)
         return torch.save(
             self.state_dict(),
             path.join(path.dirname(path.abspath(__file__)), fn),
@@ -195,6 +199,8 @@ class BaseNetwork(nn.Module):
     def load_model(self):
         file_name = "{}.th".format(self.name)
         fn = path.join("ckpt", file_name)
+        if not path.exists(fn):
+            raise Exception("Missing saved model")       
         self.load_state_dict(
             torch.load(
                 path.join(path.dirname(path.abspath(__file__)), fn),
@@ -313,10 +319,12 @@ class Actor(BaseNetwork):
             z = normal.rsample()
         else:
             z = normal.sample()
-        action = torch.tanh(z)
 
-        log_prob = normal.log_prob(z) - torch.log(1 - action.pow(2) + epsilon)
-        log_prob = log_prob.sum(-1, keepdim=True)
+        # See https://github.com/openai/spinningup/blob/038665d62d569055401d91856abb287263096178/spinup/algos/pytorch/sac/core.py#L54
+        log_prob = normal.log_prob(z).sum(axis=-1)
+        log_prob -= (2*(np.log(2) - z - F.softplus(-2*z))).sum(axis=1)
+
+        action = torch.tanh(z)
 
         return action, log_prob, z, mean, log_std
 
