@@ -131,4 +131,4 @@ dmypy.json
 # Editor stuff
 .vscode/*
 
-./ckpt/*
+*/ckpt/*

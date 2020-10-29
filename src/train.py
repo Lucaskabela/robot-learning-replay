@@ -140,7 +140,9 @@ def train(args):
     device = init_device()
     writer = init_logger(log_dir=args.log_dir)
 
-    args.time_limit = min(args.time_limit, env._max_episode_steps)
+    # Need to go another level for continuous because nested
+    max_steps = env._max_episode_steps if discrete else env.env._max_episode_steps
+    args.time_limit = min(args.time_limit, max_steps)
     sac = SAC(env, device, at=args.alph_tune, dis=discrete).to(device)
     sac.init_opt(lr=args.learning_rate)
     reward_history = []
@@ -168,7 +170,7 @@ def train(args):
             if sac.discrete:
                 action = get_one_hot_np(action, sac.soft_q1.action_space)
             # Ignore done signal if it was timeout related
-            done = False if time==env._max_episode_steps else done
+            done = False if time==max_steps else done
             replay.store(state.cpu(), action, next_state, reward, done)
             state = next_state
             reward_cum += reward

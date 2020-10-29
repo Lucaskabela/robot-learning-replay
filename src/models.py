@@ -6,6 +6,7 @@ AUTHOR: Lucas Kabela
 PURPOSE: This file defines Neural Network Architecture and other models
         which will be evaluated in this expirement
 """
+import numpy as np
 import pathlib
 import torch
 import torch.nn as nn
@@ -39,9 +40,8 @@ class SAC(nn.Module):
         self.tgt_q2 = SoftQNetwork(env).eval()
 
         if self.discrete:
-            tgt = torch.Tensor(1).fill_(env.action_space.n).to(device)
             # Need positive entropy < log(action_size) if discrete
-            self.target_entropy = torch.log(tgt) * 0.98
+            self.target_entropy = -np.log((1.0 / env.action_space.n)) * 0.98
             self.target_entropy = self.target_entropy.item()
             print("Target entropy:", self.target_entropy)
         else:
@@ -104,8 +104,6 @@ class SAC(nn.Module):
             if self.discrete:
                 act_size = self.tgt_q1.action_space
                 next_actions = guard_q_actions(next_actions, act_size)
-            else:
-                next_probs = next_probs.squeeze(1)
             next_q1 = self.tgt_q1(next_states, next_actions)
             next_q2 = self.tgt_q2(next_states, next_actions)
             min_q_next = torch.min(next_q1, next_q2) - self.alpha * next_probs
