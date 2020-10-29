@@ -37,13 +37,16 @@ class SAC(nn.Module):
         self.tgt_q1 = SoftQNetwork(env).eval()
         self.tgt_q2 = SoftQNetwork(env).eval()
 
-        tgt = torch.Tensor(env.action_space.shape).to(device)
         if self.discrete:
+            tgt = torch.Tensor(1).fill_(env.action_space.n).to(device)
             # Need positive entropy < log(action_size) if discrete
-            self.target_entropy = -torch.log((1.0 / tgt)) * 0.98
+            self.target_entropy = torch.log(tgt) * 0.98
             self.target_entropy = self.target_entropy.item()
+            print("Target entropy:", self.target_entropy)
         else:
+            tgt = torch.Tensor(env.action_space.shape).to(device)
             self.target_entropy = -torch.prod(tgt).item()
+            print("Target entropy:", self.target_entropy)
         self.adjust_alpha = at
         self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
         self.alpha = self.log_alpha.detach().exp()

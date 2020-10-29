@@ -140,6 +140,7 @@ def train(args):
     device = init_device()
     writer = init_logger(log_dir=args.log_dir)
 
+    args.time_limit = min(args.time_limit, env._max_episode_steps)
     sac = SAC(env, device, at=args.alph_tune, dis=discrete).to(device)
     sac.init_opt(lr=args.learning_rate)
     reward_history = []
@@ -156,18 +157,24 @@ def train(args):
         reward_cum = 0
         done = False
         time = 0
-        while not done and time < args.time_limit:
+        while not done and time <= args.time_limit:
             state = torch.from_numpy(state).float().to(device)
-            action = sac.get_action(state)
+            if step < args.start_steps:
+                action = env.action_space.sample()
+                action = np.array(action)
+            else:
+                action = sac.get_action(state)
             next_state, reward, done, _ = env.step(action)
             if sac.discrete:
                 action = get_one_hot_np(action, sac.soft_q1.action_space)
+            # Ignore done signal if it was timeout related
+            done = False if time==env._max_episode_steps else done
             replay.store(state.cpu(), action, next_state, reward, done)
             state = next_state
             reward_cum += reward
             step += 1
             time += 1
-            if len(replay) > args.batch_size:
+            if len(replay) > max(args.batch_size, args.start_steps):
                 update_SAC(
                     sac,
                     replay,
