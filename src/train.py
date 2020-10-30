@@ -6,6 +6,7 @@ AUTHOR: Lucas Kabela
 PURPOSE: This file defines the code for training the neural networks in pytorch
 """
 import gym
+import itertools
 from models import SAC
 import numpy as np
 import pandas as pd
