@@ -78,20 +78,16 @@ def plot_success(reward_history):
 
 def init_environment(env_name):
     """
-    Initialize the gym environment, normalize if continuous
-    and return
+    Initialize the gym environment
     """
     env = gym.make(env_name)
-    discrete = False
-    if type(env.action_space) is gym.spaces.Discrete:
-        discrete = True
-    else:
-        env = NormalizedActions(env)
+    discrete = isinstance(env.action_space, gym.spaces.Discrete)
     return env, discrete
 
 
 def seed_random(env, rand_seed):
     env.seed(rand_seed)
+    env.action_space.seed(rand_seed)
     torch.manual_seed(rand_seed)
     np.random.seed(rand_seed)
 
@@ -116,17 +112,12 @@ def evaluate_SAC(args, env, sac, writer, step):
     reward_cum = 0
     done = False
     state = env.reset()
-    device = sac.device()
-    time = 0
-    while not done and time < args.time_limit:
+    while not done:
         state = torch.from_numpy(state).float().to(device)
         action = sac.get_action(state)
         state, reward, done, _ = env.step(action)
         reward_cum += reward
-        time += 1
 
-    if writer is not None:
-        writer.add_scalar("stats/eval_reward", reward_cum, step)
     return reward_cum
 
 
@@ -135,86 +126,93 @@ def train(args):
     thresh = env.spec.reward_threshold
     print("Starting training!  Need {} to solve".format(thresh))
     print(env)
-    # print(env.observation_space["observation"].shape[0])
+
     seed_random(env, args.rand_seed)
     device = init_device()
     writer = init_logger(log_dir=args.log_dir)
 
-    # Need to go another level for continuous because nested
-    max_steps = env._max_episode_steps if discrete else env.env._max_episode_steps
-    args.time_limit = min(args.time_limit, max_steps)
-    sac = SAC(env, device, at=args.alph_tune, dis=discrete).to(device)
+    sac = SAC(env, at=args.alph_tune, dis=discrete).to(device)
     sac.init_opt(lr=args.learning_rate)
-    reward_history = []
-    eval_history = []
-    reward_cum = 0
-    max_reward = -float("inf")
     act_size = sac.actor.action_space
     replay = ReplayBuffer(args.buff_size, sac.actor.state_space, act_size)
-    step = 0
-    episode = 0
-    while step < args.steps and episode < args.num_episodes:
-        # Reset environment and record the starting state
-        state = env.reset()
-        reward_cum = 0
+
+    # Need to go another level for continuous because nested
+    total_steps = 0
+    updates = 0
+    max_reward = -float("inf")
+
+    reward_history = []
+    eval_history = []
+    for i_episode in itertools.count(1):
+        episode_reward = 0
+        episode_steps = 0
         done = False
-        time = 0
-        while not done and time <= args.time_limit:
-            state = torch.from_numpy(state).float().to(device)
-            if step < args.start_steps:
+        state = env.reset()
+
+        while not done:
+            # Reset environment and record the starting state
+            if total_steps < args.start_steps:
                 action = env.action_space.sample()
                 action = np.array(action)
             else:
                 action = sac.get_action(state)
+
+            if len(replay) > args.batch_size:
+                for i in range(args.updates_per_step):
+                    update_SAC(
+                        sac,
+                        replay,
+                        updates,
+                        writer,
+                        batch_size=args.batch_size,
+                    )
+                    updates += 1
+
             next_state, reward, done, _ = env.step(action)
+            episode_reward += reward
+            total_steps += 1
+            episode_steps += 1
+
             if sac.discrete:
                 action = get_one_hot_np(action, sac.soft_q1.action_space)
             # Ignore done signal if it was timeout related
-            done = False if time==max_steps else done
-            replay.store(state.cpu(), action, next_state, reward, done)
-            state = next_state
-            reward_cum += reward
-            step += 1
-            time += 1
-            if len(replay) > max(args.batch_size, args.start_steps):
-                update_SAC(
-                    sac,
-                    replay,
-                    step,
-                    writer,
-                    batch_size=args.batch_size,
-                )
+            done = False if episode_steps==env._max_episode_steps else done
+            replay.store(state, action, next_state, reward, done)
 
-            if step > 0 and step % args.eval_freq == 0:
-                print("Evaluating")
-                sac.eval()
-                num = step / args.eval_freq
-                curr_reward = evaluate_SAC(args, env, sac, writer, step)
-                eval_history.append((num, curr_reward))
-                if curr_reward > max_reward:
-                    print("Saving model...")
-                    max_reward = curr_reward
-                    sac.save()
-                print("Steps {} Eval Reward {:.2f}".format(step, curr_reward))
-                sac.train()
+            state = next_state
+                
+        if i_episode % args.eval_freq == 0:
+            print("Evaluating")
+            sac.eval()
+            avg_reward = 0.
+            episodes = 10
+            for _  in range(episodes):
+                curr_reward = evaluate_SAC(args, env, sac, writer, total_steps)
+                avg_reward += episode_reward
+            avg_reward /= episodes
+            eval_history.append((i_episode / args.eval_freq, avg_reward))
+            if writer is not None:
+                writer.add_scalar("stats/eval_reward", avg_reward, total_steps)
+            if curr_reward > max_reward:
+                print("Saving model...")
+                max_reward = curr_reward
+                sac.save()
+            print("Avg Eval Reward {:.2f}".format(avg_reward))
+            sac.train()
 
         # Calculate score to determine when the environment has been solved
-        reward_history.append(reward_cum)
+        reward_history.append(episode_reward)
         mean_score = np.mean(reward_history[-100:])
         if writer is not None:
-            writer.add_scalar("stats/reward", reward_cum, step)
-            writer.add_scalar("stats/avg_reward", mean_score, step)
+            writer.add_scalar("stats/reward", episode_reward, total_steps)
+            writer.add_scalar("stats/avg_reward", mean_score, total_steps)
 
-        print(
-            "Episode {} Steps {} Reward {:.2f} Avg reward {:.2f}".format(
-                episode, step, reward_history[-1], mean_score
-            )
-        )
+        print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
 
-        episode += 1
+
         if thresh is not None and mean_score > thresh:
-            print("Solved after {} episodes!".format(episode))
-            print("And {} environment steps".format(step))
+            print("Solved after {} episodes!".format(i_episode))
+            print("And {} environment steps".format(total_steps))
             break
 
     fname = "results.out"

@@ -27,7 +27,7 @@ class SAC(nn.Module):
     discrete
     """
 
-    def __init__(self, env, device, gamma=0.99, tau=0.005, at=True, dis=False):
+    def __init__(self, env, alpha=.2, gamma=0.99, tau=0.005, at=True, dis=False):
         super(SAC, self).__init__()
         if dis:
             self.actor = DiscreteActor(env)
@@ -38,23 +38,29 @@ class SAC(nn.Module):
         self.soft_q2 = SoftQNetwork(env, name="q2")
         self.tgt_q1 = SoftQNetwork(env).eval()
         self.tgt_q2 = SoftQNetwork(env).eval()
-
-        if self.discrete:
-            # Need positive entropy < log(action_size) if discrete
-            self.target_entropy = -np.log((1.0 / env.action_space.n)) * 0.98
-            self.target_entropy = self.target_entropy.item()
-            print("Target entropy:", self.target_entropy)
-        else:
-            tgt = torch.Tensor(env.action_space.shape).to(device)
-            self.target_entropy = -torch.prod(tgt).item()
-            print("Target entropy:", self.target_entropy)
-        self.adjust_alpha = at
-        self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
-        self.alpha = self.log_alpha.detach().exp()
         self.gamma = gamma
         self.tau = tau
+        
+        self.alpha = alpha
+        self.adjust_alpha = at
+        self.log_alpha = torch.zeros(1, requires_grad=True)
+        if at:
+            if self.discrete:
+                # Need positive entropy < log(action_size) if discrete
+                tgt = -np.log((1.0 / env.action_space.n)) * 0.98
+                self.target_entropy = tgt.item()
+            else:
+                tgt = torch.Tensor(env.action_space.shape)
+                self.target_entropy = -torch.prod(tgt).item()
+            self.alpha = self.log_alpha.detach().exp()
+
+    def to(self, device):
+        self.log_alpha = self.log_alpha.to(device)
+        self.alpha = self.alpha.to(device)
+        return super(Actor, self).to(device)
 
     def get_action(self, state):
+        state = torch.from_numpy(state).float().to(device)
         with torch.no_grad():
             return self.actor.get_action(state)
 
@@ -104,6 +110,8 @@ class SAC(nn.Module):
             if self.discrete:
                 act_size = self.tgt_q1.action_space
                 next_actions = guard_q_actions(next_actions, act_size)
+            else:
+                next_probs = next_probs.squeeze(1)
             next_q1 = self.tgt_q1(next_states, next_actions)
             next_q2 = self.tgt_q2(next_states, next_actions)
             min_q_next = torch.min(next_q1, next_q2) - self.alpha * next_probs
@@ -150,9 +158,11 @@ class SAC(nn.Module):
         Calculates the loss for the entropy temperature parameter.
         log_probs come from the return value of calculate_actor_loss
         """
-        with torch.no_grad():
-            inner_prod = (log_probs + self.target_entropy).detach()
-        alpha_loss = -(self.log_alpha * inner_prod).mean()
+        alpha_loss = 0
+        if self.adjust_alpha:
+            with torch.no_grad():
+                inner_prod = (log_probs + self.target_entropy).detach()
+            alpha_loss = -(self.log_alpha * inner_prod).mean()
         return alpha_loss
 
     def update_entropy(self, alpha_loss):
@@ -162,8 +172,6 @@ class SAC(nn.Module):
             self.entropy_opt.step()
             self.alpha = self.log_alpha.detach().exp()
 
-    def device(self):
-        return next(self.parameters()).device
 
     def save(self):
         self.soft_q1.save_model()
@@ -264,6 +272,15 @@ class Actor(BaseNetwork):
         self.name = name
         self.state_space = env.observation_space.shape[0]
         self.action_space = get_action_dim(env)
+        if env.action_space is None:
+            self.action_scale = torch.tensor(1.)
+            self.action_bias = torch.tensor(0.)
+        else:
+            self.action_scale = torch.FloatTensor(
+                (env.action_space.high - env.action_space.low) / 2.)
+            self.action_bias = torch.FloatTensor(
+                (env.action_space.high + env.action_space.low) / 2.)
+
         self.hidden = hidden
         self.log_std_min = log_std_min
         self.log_std_max = log_std_max
@@ -304,7 +321,7 @@ class Actor(BaseNetwork):
 
         return mean, log_std
 
-    def evaluate(self, state, reparam=False, epsilon=1e-6):
+    def evaluate(self, state, reparam=True, epsilon=1e-6):
         """
         Evaluate a state, returning action, log probs,
         mean, log_std, and z, the sampled action
@@ -316,13 +333,13 @@ class Actor(BaseNetwork):
         if reparam:
             z = normal.rsample()
         else:
-            z = normal.sample()
+            z = mean
+        x = torch.tanh(z)
+        log_prob = normal.log_prob(z)
+        log_prob -= torch.log(self.action_scale * (1 - x.pow(2)) + epsilon)
+        log_prob = log_prob.sum(1, keepdim=True)
 
-        # See https://github.com/openai/spinningup/blob/038665d62d569055401d91856abb287263096178/spinup/algos/pytorch/sac/core.py#L54
-        log_prob = normal.log_prob(z).sum(axis=-1)
-        log_prob -= (2*(np.log(2) - z - F.softplus(-2*z))).sum(axis=1)
-
-        action = torch.tanh(z)
+        action = x * self.action_scale + self.action_bias
 
         return action, log_prob, z, mean, log_std
 
@@ -334,12 +351,15 @@ class Actor(BaseNetwork):
         std = log_std.exp()
 
         normal = Normal(mean, std)
-        z = normal.sample()
-        action = torch.tanh(z)
+        z = normal.rsample()
+        action = torch.tanh(z) * self.action_scale + self.action_bias
 
-        action = action.detach().cpu().numpy()
-        return action[0]
+        return action.detach().cpu().numpy()[0]
 
+    def to(self, device):
+        self.action_scale = self.action_scale.to(device)
+        self.action_bias = self.action_bias.to(device)
+        return super(Actor, self).to(device)
 
 class DiscreteActor(BaseNetwork):
     def __init__(self, env, hidden=[256, 256], dropout=0.0, name="sac_d"):
