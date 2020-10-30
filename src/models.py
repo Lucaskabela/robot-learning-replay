@@ -56,7 +56,7 @@ class SAC(nn.Module):
 
     def to(self, device):
         self.log_alpha = self.log_alpha.to(device)
-        return super(Actor, self).to(device)
+        return super(SAC, self).to(device)
 
     def get_action(self, state):
         state = torch.from_numpy(state).float().to(device)
