@@ -56,7 +56,6 @@ class SAC(nn.Module):
 
     def to(self, device):
         self.log_alpha = self.log_alpha.to(device)
-        self.alpha = self.alpha.to(device)
         return super(Actor, self).to(device)
 
     def get_action(self, state):
