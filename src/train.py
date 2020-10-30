@@ -131,8 +131,9 @@ def train(args):
     device = init_device()
     writer = init_logger(log_dir=args.log_dir)
 
-    sac = SAC(env, at=args.alph_tune, dis=discrete).to(device)
+    sac = SAC(env, at=args.alph_tune, dis=discrete)
     sac.init_opt(lr=args.learning_rate)
+    sac = sac.to(device)
     act_size = sac.actor.action_space
     replay = ReplayBuffer(args.buff_size, sac.actor.state_space, act_size)
 
