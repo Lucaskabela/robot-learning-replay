@@ -39,14 +39,14 @@ def _parse_args():
     parser.add_argument(
         "--no_alpha_tune", dest="alph_tune", default=True, action="store_false"
     )
-    parser.add_argument("--eval_freq", type=int, default=10000)
+    parser.add_argument("--eval_freq", type=int, default=10)
     # Training related arguments here
     parser.add_argument("--rand_seed", type=int, default=1)
     parser.add_argument("--log_dir", type=str, default=None)
     parser.add_argument("-t", "--time_limit", type=int, default=10_000)
     parser.add_argument("-s", "--steps", type=int, default=1_000_000)
     parser.add_argument("-n", "--num_episodes", type=int, default=1000)
-    parser.add_argument("-lr", "--learning_rate", type=float, default=1e-3)
+    parser.add_argument("-lr", "--learning_rate", type=float, default=3e-4)
     parser.add_argument("-c", "--continue_training", action="store_true")
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--updates_per_step", type=int, default=1)

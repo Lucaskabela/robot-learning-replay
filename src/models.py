@@ -59,7 +59,7 @@ class SAC(nn.Module):
         return super(SAC, self).to(device)
 
     def get_action(self, state):
-        state = torch.from_numpy(state).float().to(device)
+        state = torch.from_numpy(state).float().to(self.device())
         with torch.no_grad():
             return self.actor.get_action(state)
 
@@ -171,6 +171,9 @@ class SAC(nn.Module):
             self.entropy_opt.step()
             self.alpha = self.log_alpha.detach().exp()
 
+
+    def device(self):
+        return next(self.parameters()).device
 
     def save(self):
         self.soft_q1.save_model()
@@ -353,7 +356,7 @@ class Actor(BaseNetwork):
         z = normal.rsample()
         action = torch.tanh(z) * self.action_scale + self.action_bias
 
-        return action.detach().cpu().numpy()[0]
+        return action.detach().cpu().numpy()
 
     def to(self, device):
         self.action_scale = self.action_scale.to(device)

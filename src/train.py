@@ -150,7 +150,6 @@ def train(args):
         episode_steps = 0
         done = False
         state = env.reset()
-
         while not done:
             # Reset environment and record the starting state
             if total_steps < args.start_steps:
@@ -158,7 +157,6 @@ def train(args):
                 action = np.array(action)
             else:
                 action = sac.get_action(state)
-
             if len(replay) > args.batch_size:
                 for i in range(args.updates_per_step):
                     update_SAC(
@@ -209,7 +207,7 @@ def train(args):
             writer.add_scalar("stats/reward", episode_reward, total_steps)
             writer.add_scalar("stats/avg_reward", mean_score, total_steps)
 
-        print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
+        print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_steps, episode_steps, round(episode_reward, 2)))
 
 
         if thresh is not None and mean_score > thresh:
