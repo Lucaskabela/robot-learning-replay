@@ -39,7 +39,8 @@ def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=20):
         writer.add_scalar("loss/Q1", q_loss[0].detach().item(), step)
         writer.add_scalar("loss/Q2", q_loss[1].detach().item(), step)
         writer.add_scalar("loss/policy", actor_loss.detach().item(), step)
-        writer.add_scalar("loss/alpha", alpha_loss.detach().item(), step)
+        if sac.alph_tune:
+            writer.add_scalar("loss/alpha", alpha_loss.detach().item(), step)
         writer.add_scalar("stats/alpha", sac.alpha, step)
         writer.add_scalar(
             "stats/entropy",
@@ -217,7 +218,7 @@ def train(args):
 
         if total_steps > args.steps:
             break
-            
+
     fname = "results.out"
     data = np.array(reward_history)
     np.savetxt(fname, data)
