@@ -108,10 +108,9 @@ class SAC(nn.Module):
 
     def calc_critic_loss(self, states, actions, rewards, next_states, done):
         with torch.no_grad():
-            next_actions, next_probs, _ = self.actor.evaluate(next_states)
+            next_actions, next_probs, _ = self.actor.evaluate(next_states, True)
             if self.discrete:
-                act_size = self.tgt_q1.action_space
-                next_actions = guard_q_actions(next_actions, act_size)
+                next_probs = next_probs.unsqueeze(1)
             next_q1 = self.tgt_q1(next_states, next_actions)
             next_q2 = self.tgt_q2(next_states, next_actions)
             min_q_next = torch.min(next_q1, next_q2) - self.alpha * next_probs
@@ -381,12 +380,11 @@ class DiscreteActor(BaseNetwork):
     def forward(self, state):
         return self.ffn(state)
 
-    def evaluate(self, state, epsilon=1e-6, reparam=False):
+    def evaluate(self, state, reparam=False, epsilon=1e-6):
         """
         Evaluate a state, returning action, log probs,
         mean, log_std, and z, the sampled action
         """
-
         action_probs = self.forward(state)
         action_pd = GumbelSoftmax(probs=action_probs, temperature=0.9)
         actions = action_pd.rsample() if reparam else action_pd.sample()
