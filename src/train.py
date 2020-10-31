@@ -115,7 +115,6 @@ def evaluate_SAC(args, env, sac, writer, step):
     done = False
     state = env.reset()
     while not done:
-        state = torch.from_numpy(state).float().to(device)
         action = sac.get_action(state)
         state, reward, done, _ = env.step(action)
         reward_cum += reward
