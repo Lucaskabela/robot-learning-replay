@@ -29,21 +29,24 @@ class SAC(nn.Module):
 
     def __init__(self, env, alpha=.2, gamma=0.99, tau=0.005, at=True, dis=False):
         super(SAC, self).__init__()
+        
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if dis:
             self.actor = DiscreteActor(env)
         else:
             self.actor = Actor(env)
+        self.actor = self.actor.to(self.device)
         self.discrete = dis
-        self.soft_q1 = SoftQNetwork(env, name="q1")
-        self.soft_q2 = SoftQNetwork(env, name="q2")
-        self.tgt_q1 = SoftQNetwork(env).eval()
-        self.tgt_q2 = SoftQNetwork(env).eval()
+        self.soft_q1 = SoftQNetwork(env, name="q1").to(self.device)
+        self.soft_q2 = SoftQNetwork(env, name="q2").to(self.device)
+        self.tgt_q1 = SoftQNetwork(env).eval().to(self.device)
+        self.tgt_q2 = SoftQNetwork(env).eval().to(self.device)
         self.gamma = gamma
         self.tau = tau
         
         self.alpha = alpha
         self.adjust_alpha = at
-        self.log_alpha = torch.zeros(1, requires_grad=True)
+        self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
         if at:
             if self.discrete:
                 # Need positive entropy < log(action_size) if discrete
@@ -54,15 +57,15 @@ class SAC(nn.Module):
                 self.target_entropy = -torch.prod(tgt).item()
             self.alpha = self.log_alpha.detach().exp()
 
-    def to(self, device):
-        self.log_alpha = self.log_alpha.to(device)
-        self.actor = self.actor.to(device)
-        return super(SAC, self).to(device)
 
-    def get_action(self, state):
-        state = torch.from_numpy(state).float().to(self.device())
+    def get_action(self, state, eval=False):
+        state = torch.from_numpy(state).float().to(self.device).unsqueeze(0)
         with torch.no_grad():
-            return self.actor.get_action(state)
+            if eval:
+                action, _, _ = self.actor.evaluate(state)
+            else:
+                _, _, action = self.actor.evaluate(state)
+            return action.detach().cpu().numpy()[0]
 
     def init_opt(self, opt="Adam", lr=3e-4):
         self.q1_opt = optim.Adam(self.soft_q1.parameters(), lr=lr)
@@ -105,22 +108,18 @@ class SAC(nn.Module):
 
     def calc_critic_loss(self, states, actions, rewards, next_states, done):
         with torch.no_grad():
-            advantage = self.actor.evaluate(next_states)
-            next_actions, next_probs, _, _, _ = advantage
+            next_actions, next_probs, _ = self.actor.evaluate(next_states)
             if self.discrete:
                 act_size = self.tgt_q1.action_space
                 next_actions = guard_q_actions(next_actions, act_size)
-            else:
-                next_probs = next_probs.squeeze(1)
             next_q1 = self.tgt_q1(next_states, next_actions)
             next_q2 = self.tgt_q2(next_states, next_actions)
             min_q_next = torch.min(next_q1, next_q2) - self.alpha * next_probs
             target_q_value = rewards + (1 - done) * self.gamma * min_q_next
-
         p_q1 = self.soft_q1(states, actions)
         p_q2 = self.soft_q2(states, actions)
-        q_value_loss1 = F.mse_loss(p_q1, target_q_value.detach())
-        q_value_loss2 = F.mse_loss(p_q2, target_q_value.detach())
+        q_value_loss1 = F.mse_loss(p_q1, target_q_value)
+        q_value_loss2 = F.mse_loss(p_q2, target_q_value)
         return q_value_loss1, q_value_loss2
 
     def update_critics(self, q1_loss, q2_loss, clip=None):
@@ -138,8 +137,7 @@ class SAC(nn.Module):
 
     def calc_actor_loss(self, states):
         # Train actor network
-        res = self.actor.evaluate(states, reparam=True)
-        actions, log_probs, _, _, _ = res
+        actions, log_probs, _ = self.actor.evaluate(states, reparam=True)
         q1 = self.soft_q1(states, actions)
         q2 = self.soft_q1(states, actions)
         min_q = torch.min(q1, q2)
@@ -172,9 +170,8 @@ class SAC(nn.Module):
             self.entropy_opt.step()
             self.alpha = self.log_alpha.detach().exp()
 
-
     def device(self):
-        return next(self.parameters()).device
+        return self.device
 
     def save(self):
         self.soft_q1.save_model()
@@ -258,7 +255,8 @@ class SoftQNetwork(BaseNetwork):
         Given the state and action, produce a Q value
         """
         q_in = torch.cat([state, action], 1)
-        return self.ffn(q_in).view(-1)
+        val = self.ffn(q_in)
+        return val
 
 
 class Actor(BaseNetwork):
@@ -331,33 +329,18 @@ class Actor(BaseNetwork):
         """
         mean, log_std = self.forward(state)
         std = log_std.exp()
-
         normal = Normal(mean, std)
-        if reparam:
-            z = normal.rsample()
-        else:
-            z = mean
+        z = normal.rsample() if reparam else normal.sample()
+   
         x = torch.tanh(z)
         log_prob = normal.log_prob(z)
         log_prob -= torch.log(self.action_scale * (1 - x.pow(2)) + epsilon)
         log_prob = log_prob.sum(1, keepdim=True)
 
         action = x * self.action_scale + self.action_bias
+        mean = torch.tanh(mean) * self.action_scale + self.action_bias
+        return action, log_prob, mean
 
-        return action, log_prob, z, mean, log_std
-
-    def get_action(self, state):
-        """
-        Returns an action given a state
-        """
-        mean, log_std = self.forward(state)
-        std = log_std.exp()
-
-        normal = Normal(mean, std)
-        z = normal.rsample()
-        action = torch.tanh(z) * self.action_scale + self.action_bias
-
-        return action.detach().cpu().numpy()
 
     def to(self, device):
         self.action_scale = self.action_scale.to(device)
@@ -408,13 +391,5 @@ class DiscreteActor(BaseNetwork):
         action_pd = GumbelSoftmax(probs=action_probs, temperature=0.9)
         actions = action_pd.rsample() if reparam else action_pd.sample()
         log_probs = action_pd.log_prob(actions)
-        return actions, log_probs, None, None, None
+        return actions, log_probs, torch.argmax(action_probs, dim=-1)
 
-    def get_action(self, state):
-        """
-        Returns an action given a state
-        """
-        action_probs = self.forward(state)
-        action = torch.distributions.Categorical(probs=action_probs).sample()
-        action = action.detach().cpu().numpy()
-        return action

@@ -23,8 +23,10 @@ def batch_to_torch_device(batch, device):
 
 def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=20):
     batch = replay.sample(batch_size)
-    batch = batch_to_torch_device(batch, sac.device())
+    batch = batch_to_torch_device(batch, sac.device)
     states, actions, reward, next_states, done = batch
+    reward = reward.unsqueeze(1)
+    done = done.unsqueeze(1)
     q_loss = sac.calc_critic_loss(states, actions, reward, next_states, done)
     sac.update_critics(q_loss[0], q_loss[1])
 
@@ -115,7 +117,7 @@ def evaluate_SAC(args, env, sac, writer, step):
     done = False
     state = env.reset()
     while not done:
-        action = sac.get_action(state)
+        action = sac.get_action(state, eval=True)
         state, reward, done, _ = env.step(action)
         reward_cum += reward
 
@@ -188,7 +190,7 @@ def train(args):
             episodes = 10
             for _  in range(episodes):
                 curr_reward = evaluate_SAC(args, env, sac, writer, total_steps)
-                avg_reward += episode_reward
+                avg_reward += curr_reward
             avg_reward /= episodes
             eval_history.append((i_episode / args.eval_freq, avg_reward))
             if writer is not None:
