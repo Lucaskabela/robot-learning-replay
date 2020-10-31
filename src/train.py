@@ -215,6 +215,9 @@ def train(args):
             print("And {} environment steps".format(total_steps))
             break
 
+        if total_steps > args.steps:
+            break
+            
     fname = "results.out"
     data = np.array(reward_history)
     np.savetxt(fname, data)
