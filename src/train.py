@@ -51,28 +51,28 @@ def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=20):
         )
 
 
-def plot_success(reward_history):
+def plot_success(reward_history, time_steps):
     # number of episodes for rolling average
     window = 50
 
     fig, ((ax1), (ax2)) = plt.subplots(2, 1, sharey=True, figsize=[9, 9])
     rolling_mean = pd.Series(reward_history).rolling(window).mean()
     std = pd.Series(reward_history).rolling(window).std()
-    ax1.plot(rolling_mean)
+    ax1.plot(time_steps, rolling_mean)
     ax1.fill_between(
-        range(len(reward_history)),
+        time_steps,
         rolling_mean - std,
         rolling_mean + std,
         color="blue",
         alpha=0.2,
     )
     ax1.set_title("Episode Return Moving Average")
-    ax1.set_xlabel("Episode")
+    ax1.set_xlabel("Learning Update Step")
     ax1.set_ylabel("Average Return")
 
-    ax2.plot(reward_history)
+    ax2.plot(time_steps, reward_history)
     ax2.set_title("Return per Episode")
-    ax2.set_xlabel("Episode")
+    ax2.set_xlabel("Learning Update Step")
     ax2.set_ylabel("Return")
 
     fig.tight_layout(pad=2)
@@ -135,6 +135,8 @@ def train(args):
     writer = init_logger(log_dir=args.log_dir)
 
     sac = SAC(env, alpha=args.alpha, at=args.alph_tune, dis=discrete)
+    if args.continue_training:
+        sac.load()
     sac.init_opt(lr=args.learning_rate)
     sac = sac.to(device)
     act_size = sac.actor.action_space
@@ -146,6 +148,7 @@ def train(args):
     max_reward = -float("inf")
 
     reward_history = []
+    time_steps = []
     eval_history = []
     for i_episode in itertools.count(1):
         episode_reward = 0
@@ -204,6 +207,7 @@ def train(args):
 
         # Calculate score to determine when the environment has been solved
         reward_history.append(episode_reward)
+        time_steps.append(total_steps)
         mean_score = np.mean(reward_history[-100:])
         if writer is not None:
             writer.add_scalar("stats/reward", episode_reward, total_steps)
@@ -222,5 +226,7 @@ def train(args):
 
     fname = "results.out"
     data = np.array(reward_history)
-    np.savetxt(fname, data)
-    plot_success(reward_history)
+    time = np.array(time_steps)
+    dat = np.stack((data, time), axis=0)
+    np.savetxt(fname, dat)
+    plot_success(reward_history, time_steps)
