@@ -108,9 +108,13 @@ class SAC(nn.Module):
 
     def calc_critic_loss(self, states, actions, rewards, next_states, done):
         with torch.no_grad():
-            next_actions, next_probs, _ = self.actor.evaluate(next_states, True)
+            next_actions, next_probs, _ = self.actor.evaluate(next_states)
             if self.discrete:
-                next_probs = next_probs.unsqueeze(1)
+                next_actions = guard_q_actions(next_actions, self.tgt_q1.action_space)
+            else:
+                next_probs = next_probs.view(-1)
+            # print("actions", next_actions.shape)
+            # print("probs", next_probs.shape)
             next_q1 = self.tgt_q1(next_states, next_actions)
             next_q2 = self.tgt_q2(next_states, next_actions)
             min_q_next = torch.min(next_q1, next_q2) - self.alpha * next_probs
@@ -255,7 +259,7 @@ class SoftQNetwork(BaseNetwork):
         """
         q_in = torch.cat([state, action], 1)
         val = self.ffn(q_in)
-        return val
+        return val.view(-1)
 
 
 class Actor(BaseNetwork):

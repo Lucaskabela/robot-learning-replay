@@ -25,8 +25,8 @@ def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=20):
     batch = replay.sample(batch_size)
     batch = batch_to_torch_device(batch, sac.device)
     states, actions, reward, next_states, done = batch
-    reward = reward.unsqueeze(1)
-    done = done.unsqueeze(1)
+    # reward = reward.unsqueeze(1)
+    # done = done.unsqueeze(1)
     q_loss = sac.calc_critic_loss(states, actions, reward, next_states, done)
     sac.update_critics(q_loss[0], q_loss[1])
 
@@ -213,7 +213,7 @@ def train(args):
             writer.add_scalar("stats/reward", episode_reward, total_steps)
             writer.add_scalar("stats/avg_reward", mean_score, total_steps)
 
-        print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_steps, episode_steps, round(episode_reward, 2)))
+        print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}, avg reward: {}".format(i_episode, total_steps, episode_steps, round(episode_reward, 2), round(mean_score, 2)))
 
 
         if thresh is not None and mean_score > thresh:
