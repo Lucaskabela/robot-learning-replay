@@ -216,10 +216,10 @@ def train(args):
         print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}, avg reward: {}".format(i_episode, total_steps, episode_steps, round(episode_reward, 2), round(mean_score, 2)))
 
 
-        if thresh is not None and mean_score > thresh:
-            print("Solved after {} episodes!".format(i_episode))
-            print("And {} environment steps".format(total_steps))
-            break
+        # if thresh is not None and mean_score > thresh:
+        #     print("Solved after {} episodes!".format(i_episode))
+        #     print("And {} environment steps".format(total_steps))
+        #     break
 
         if total_steps > args.steps:
             break

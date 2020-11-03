@@ -44,9 +44,7 @@ def _parse_args():
     # Training related arguments here
     parser.add_argument("--rand_seed", type=int, default=1)
     parser.add_argument("--log_dir", type=str, default=None)
-    parser.add_argument("-t", "--time_limit", type=int, default=10_000)
     parser.add_argument("-s", "--steps", type=int, default=1_000_000)
-    parser.add_argument("-n", "--num_episodes", type=int, default=1000)
     parser.add_argument("-lr", "--learning_rate", type=float, default=3e-4)
     parser.add_argument("-c", "--continue_training", action="store_true")
     parser.add_argument("--batch_size", type=int, default=256)
