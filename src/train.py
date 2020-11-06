@@ -21,19 +21,32 @@ def batch_to_torch_device(batch, device):
     return [torch.from_numpy(b).float().to(device) for b in batch]
 
 
-def update_SAC(sac, replay, step, writer, batch_size=256, log_interval=20):
-    batch = replay.sample(batch_size)
-    batch = batch_to_torch_device(batch, sac.device)
-    states, actions, reward, next_states, done = batch
+def update_SAC(sac, replay, step, writer, batch_size=256, use_per=False, log_interval=20):
+    if use_per:
+        # Calculate beta depending on step
+        beta = .4
+        batch = replay.sample(batch_size, beta)
+        batch = batch_to_torch_device(batch, sac.device)
+        states, actions, reward, next_states, done, weights, idxes = batch
+    else:
+        batch = replay.sample(batch_size)
+        batch = batch_to_torch_device(batch, sac.device)
+        states, actions, reward, next_states, done = batch
+        weights, batch_idxes = torch.ones_like(rewards), None
+
     # reward = reward.unsqueeze(1)
     # done = done.unsqueeze(1)
-    q_loss = sac.calc_critic_loss(states, actions, reward, next_states, done)
+    q_loss = sac.calc_critic_loss(states, actions, reward, next_states, done, weights)
     sac.update_critics(q_loss[0], q_loss[1])
+    if use_per:
+        new_priorities = q_loss[2] + 1e-6
+        print("Prio shape:" , new_priorities.shape)
+        replay_buffer.update_priorities(idxes, new_priorities)
 
-    actor_loss, log_probs = sac.calc_actor_loss(states)
+    actor_loss, log_probs = sac.calc_actor_loss(states, weights)
     sac.update_actor(actor_loss)
 
-    alpha_loss = sac.calc_entropy_tuning_loss(log_probs)
+    alpha_loss = sac.calc_entropy_tuning_loss(log_probs, weights)
     sac.update_entropy(alpha_loss)
     sac.soft_copy()
 
@@ -140,7 +153,16 @@ def train(args):
     sac.init_opt(lr=args.learning_rate)
     sac = sac.to(device)
     act_size = sac.actor.action_space
-    replay = ReplayBuffer(args.buff_size, sac.actor.state_space, act_size)
+    if args.per:
+        replay = PrioritizedReplay(args.buff_size, sac.actor.state_space, act_size)
+    elif args.her:
+        # replay = HindisightReplay()
+        print("HER not yet supported")
+    elif args.pher:
+        # replay = PHEReplay()
+        print("PHER not yet supported")
+    else:
+        replay = ReplayBuffer(args.buff_size, sac.actor.state_space, act_size)
 
     # Need to go another level for continuous because nested
     total_steps = 0

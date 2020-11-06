@@ -106,7 +106,7 @@ class SAC(nn.Module):
                 target_param.data * (1.0 - self.tau) + param.data * self.tau
             )
 
-    def calc_critic_loss(self, states, actions, rewards, next_states, done):
+    def calc_critic_loss(self, states, actions, rewards, next_states, done, weights):
         with torch.no_grad():
             next_actions, next_probs, _ = self.actor.evaluate(next_states)
             if self.discrete:
@@ -121,9 +121,14 @@ class SAC(nn.Module):
             target_q_value = rewards + (1 - done) * self.gamma * min_q_next
         p_q1 = self.soft_q1(states, actions)
         p_q2 = self.soft_q2(states, actions)
-        q_value_loss1 = F.mse_loss(p_q1, target_q_value)
-        q_value_loss2 = F.mse_loss(p_q2, target_q_value)
-        return q_value_loss1, q_value_loss2
+
+        # Take the largest state errors
+        errors = torch.abs(torch.max(target_q_value - p_q1, target_q_value - p_q2)).detach()
+
+        # MSE Loss, but weighted with importance sample weights
+        q_value_loss1 = ((weights * (p_q1 - target_q_value))**2).mean()
+        q_value_loss2 = ((weights * (p_q2 - target_q_value))**2).mean()
+        return q_value_loss1, q_value_loss2, errors
 
     def update_critics(self, q1_loss, q2_loss, clip=None):
         self.q1_opt.zero_grad()
@@ -138,13 +143,13 @@ class SAC(nn.Module):
             torch.nn.utils.clip_grad_norm_(self.soft_q2.parameters(), clip)
         self.q2_opt.step()
 
-    def calc_actor_loss(self, states):
+    def calc_actor_loss(self, states, weights):
         # Train actor network
         actions, log_probs, _ = self.actor.evaluate(states, reparam=True)
         q1 = self.soft_q1(states, actions)
         q2 = self.soft_q1(states, actions)
         min_q = torch.min(q1, q2)
-        policy_loss = (self.alpha * log_probs - min_q).mean()
+        policy_loss = (weights * (self.alpha * log_probs - min_q)).mean()
         return policy_loss, log_probs
 
     def update_actor(self, actor_loss, clip=None):
@@ -154,7 +159,7 @@ class SAC(nn.Module):
             torch.nn.utils.clip_grad_norm_(self.actor.parameters(), clip)
         self.actor_opt.step()
 
-    def calc_entropy_tuning_loss(self, log_probs):
+    def calc_entropy_tuning_loss(self, log_probs, weights):
         """
         Calculates the loss for the entropy temperature parameter.
         log_probs come from the return value of calculate_actor_loss
@@ -163,7 +168,7 @@ class SAC(nn.Module):
         if self.adjust_alpha:
             with torch.no_grad():
                 inner_prod = (log_probs + self.target_entropy).detach()
-            alpha_loss = -(self.log_alpha * inner_prod).mean()
+            alpha_loss = -(weights * (self.log_alpha * inner_prod)).mean()
         return alpha_loss
 
     def update_entropy(self, alpha_loss):
