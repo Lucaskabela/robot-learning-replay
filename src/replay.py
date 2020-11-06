@@ -7,6 +7,7 @@ PURPOSE: This file defines the various experience replay techniques used
         in this research project
 """
 import numpy as np
+import random
 from utils import SumSegmentTree, MinSegmentTree 
 
 class ReplayBuffer:
@@ -139,8 +140,8 @@ class PrioritizedReplay(ReplayBuffer):
         res = []
         upper = min(self.buf_size, self.num_added) - 1
         p_total = self._it_sum.sum(0, upper)
-        every_range_len = p_total / batch_size
-        for i in range(batch_size):
+        every_range_len = p_total / b_size
+        for i in range(b_size):
             mass = random.random() * every_range_len + i * every_range_len
             idx = self._it_sum.find_prefixsum_idx(mass)
             res.append(idx)
@@ -154,7 +155,7 @@ class PrioritizedReplay(ReplayBuffer):
         max_weight = (p_min * upper) ** (-beta)
 
         i = 0
-        for idx in idxes:
+        for idx in batch_idxes:
             p_sample = self._it_sum[idx] / self._it_sum.sum()
             weight = (p_sample * upper) ** (-beta)
             weights[i] = weight / max_weight
@@ -164,12 +165,17 @@ class PrioritizedReplay(ReplayBuffer):
         rewards = self.rewards[batch_idxes]
         dones = self.dones[batch_idxes]
 
-        return states, actions, rewards, state_ps, dones, weights, batch_idxes
+        return states, actions, rewards, state_ps, dones, weights, np.array(batch_idxes)
 
     def update_priorities(self, idxes, priorities):
+        assert len(priorities.shape) == 1
+        assert idxes.shape == priorities.shape 
+
+        idxes = idxes.long().tolist()
+        priorities = priorities.tolist()
         for idx, prio in zip(idxes, priorities):
-            self._it_sum[idx] = priority ** self.alpha
-            self._it_min[idx] = priority ** self.alpha
+            self._it_sum[idx] = prio ** self.alpha
+            self._it_min[idx] = prio ** self.alpha
 
             self._max_priority = max(self._max_priority, prio)
 

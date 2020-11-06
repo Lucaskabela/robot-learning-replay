@@ -11,9 +11,10 @@ from models import SAC
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import random
 import torch
 import torch.utils.tensorboard as tb
-from replay import ReplayBuffer
+from replay import ReplayBuffer, PrioritizedReplay, HindsightReplay, PHEReplay
 from utils import get_one_hot_np, NormalizedActions
 
 
@@ -40,8 +41,7 @@ def update_SAC(sac, replay, step, writer, batch_size=256, use_per=False, log_int
     sac.update_critics(q_loss[0], q_loss[1])
     if use_per:
         new_priorities = q_loss[2] + 1e-6
-        print("Prio shape:" , new_priorities.shape)
-        replay_buffer.update_priorities(idxes, new_priorities)
+        replay.update_priorities(idxes, new_priorities)
 
     actor_loss, log_probs = sac.calc_actor_loss(states, weights)
     sac.update_actor(actor_loss)
@@ -103,6 +103,7 @@ def init_environment(env_name):
 
 
 def seed_random(env, rand_seed):
+    random.seed(rand_seed)
     env.seed(rand_seed)
     env.action_space.seed(rand_seed)
     torch.manual_seed(rand_seed)
@@ -192,6 +193,7 @@ def train(args):
                         updates,
                         writer,
                         batch_size=args.batch_size,
+                        use_per=args.per or args.pher,
                     )
                     updates += 1
 
