@@ -159,6 +159,7 @@ class PrioritizedReplay(ReplayBuffer):
             p_sample = self._it_sum[idx] / self._it_sum.sum()
             weight = (p_sample * upper) ** (-beta)
             weights[i] = weight / max_weight
+            i += 1
         states = self.states[batch_idxes]
         actions = self.actions[batch_idxes]
         state_ps = self.next_states[batch_idxes]
