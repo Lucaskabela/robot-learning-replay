@@ -33,7 +33,7 @@ def update_SAC(sac, replay, step, writer, batch_size=256, use_per=False, log_int
         batch = replay.sample(batch_size)
         batch = batch_to_torch_device(batch, sac.device)
         states, actions, reward, next_states, done = batch
-        weights, batch_idxes = torch.ones_like(rewards), None
+        weights, batch_idxes = torch.ones_like(reward), None
 
     # reward = reward.unsqueeze(1)
     # done = done.unsqueeze(1)
