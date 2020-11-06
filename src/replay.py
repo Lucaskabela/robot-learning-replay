@@ -167,7 +167,7 @@ class PrioritizedReplay(ReplayBuffer):
         return states, actions, rewards, state_ps, dones, weights, batch_idxes
 
     def update_priorities(self, idxes, priorities):
-        for idx, prio in zip(idxes, priorities)
+        for idx, prio in zip(idxes, priorities):
             self._it_sum[idx] = priority ** self.alpha
             self._it_min[idx] = priority ** self.alpha
 
