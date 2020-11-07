@@ -29,14 +29,20 @@ def update_SAC(sac, replay, step, writer, batch_size=256, use_per=False, log_int
         batch = replay.sample(batch_size, beta)
         batch = batch_to_torch_device(batch, sac.device)
         states, actions, reward, next_states, done, weights, idxes = batch
+    elif use_her:
+        states, next_states, g = transitions['obs'], transitions['obs_next'], transitions['g']
+        actions, reward = transitions['actions'], transitions['r']
+        states = preproc_inputs(states, g)
+        next_states = preproc_inputs(next_states, g)
+        batch = batch_to_torch_device((states, actions, reward, next_states))
+        states, actions, reward, next_states = batch
+        weights, done, batch_idxes = torch.ones_like(reward), torch.zeros_like(reward), None
     else:
         batch = replay.sample(batch_size)
         batch = batch_to_torch_device(batch, sac.device)
         states, actions, reward, next_states, done = batch
         weights, batch_idxes = torch.ones_like(reward), None
 
-    # reward = reward.unsqueeze(1)
-    # done = done.unsqueeze(1)
     q_loss = sac.calc_critic_loss(states, actions, reward, next_states, done, weights)
     sac.update_critics(q_loss[0], q_loss[1])
     if use_per:
@@ -178,39 +184,72 @@ def train(args):
         episode_steps = 0
         done = False
         state = env.reset()
+        if args.her or args.pher:
+            ep_obs, ep_ag, ep_g, ep_actions = [], [], [], []
+            obs = state['observation']
+            ag = state['achieved_goal']
+            g = state['desired_goal']
         while not done:
-            # Reset environment and record the starting state
+            # If her, concatenate state and goal
+            if args.her or args.pher:
+                state = preproc_inputs(obs, g)
             if total_steps < args.start_steps:
                 action = env.action_space.sample()
                 action = np.array(action)
             else:
                 action = sac.get_action(state)
-            if len(replay) > args.batch_size:
-                for i in range(args.updates_per_step):
-                    update_SAC(
-                        sac,
-                        replay,
-                        updates,
-                        writer,
-                        batch_size=args.batch_size,
-                        use_per=args.per or args.pher,
-                    )
-                    updates += 1
 
-            next_state, reward, done, _ = env.step(action)
-            episode_reward += reward
-            total_steps += 1
-            episode_steps += 1
-
+            next_state, reward, done, info = env.step(action)
             if sac.discrete:
                 action = get_one_hot_np(action, sac.soft_q1.action_space)
-            # Ignore done signal if it was timeout related
-            done = False if episode_steps==env._max_episode_steps else done
-            replay.store(state, action, next_state, reward, done)
 
-            state = next_state
-                
-        if i_episode % args.eval_freq == 0:
+            if args.her or args.pher:
+                ep_obs.append(obs.copy())
+                ep_ag.append(ag.copy())
+                ep_g.append(g.copy())
+                ep_actions.append(action.copy())
+                obs = next_state['observation']
+                ag = next_state['achieved_goal']
+            else:
+                episode_reward += reward
+                total_steps += 1
+                episode_steps += 1
+                # Ignore done signal if it was timeout related
+                done = False if episode_steps==env._max_episode_steps else done
+                replay.store(state, action, next_state, reward, done)
+                state = next_state
+
+                if len(replay) > args.batch_size:
+                    for i in range(args.updates_per_step):
+                        update_SAC(
+                            sac,
+                            replay,
+                            updates,
+                            writer,
+                            batch_size=args.batch_size,
+                            use_per=args.per or args.pher,
+                        )
+                        updates += 1
+
+        if args.her or args.pher:
+            mb_obs = np.array(ep_obs)
+            mb_ag = np.array(ep_ag)
+            mb_g = np.array(ep_g)
+            mb_actions = np.array(ep_actions)
+            replay.store([mb_obs, mb_ag, mb_g, mb_actions])
+            for _ in range(self.args.updates_per_step):
+                # train the network
+                update_SAC(
+                            sac,
+                            replay,
+                            updates,
+                            writer,
+                            batch_size=args.batch_size,
+                            use_per=args.per or args.pher,
+                        )
+                updates += 1
+
+        if i_episode % args.eval_freq == 0 and not (args.her or args.pher):
             print("Evaluating")
             sac.eval()
             avg_reward = 0.
