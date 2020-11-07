@@ -27,7 +27,7 @@ class SAC(nn.Module):
     discrete
     """
 
-    def __init__(self, env, alpha=.2, gamma=0.99, tau=0.005, at=True, dis=False):
+    def __init__(self, env, alpha=.2, gamma=0.99, tau=0.005, at=True, dis=False, params=None):
         super(SAC, self).__init__()
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

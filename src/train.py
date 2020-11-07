@@ -113,6 +113,8 @@ def seed_random(env, rand_seed):
     env.seed(rand_seed)
     env.action_space.seed(rand_seed)
     torch.manual_seed(rand_seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(rand_seed)
     np.random.seed(rand_seed)
 
 
@@ -131,6 +133,16 @@ def init_logger(log_dir=None):
         writer = None
     return writer
 
+def get_env_params(env):
+    obs = env.reset()
+    # close the environment
+    params = {'obs': obs['observation'].shape[0],
+            'goal': obs['desired_goal'].shape[0],
+            'action': env.action_space.shape[0],
+            'action_max': env.action_space.high[0],
+            }
+    params['max_timesteps'] = env._max_episode_steps
+    return params
 
 def evaluate_SAC(args, env, sac, writer, step):
     reward_cum = 0
@@ -146,6 +158,8 @@ def evaluate_SAC(args, env, sac, writer, step):
 
 def train(args):
     env, discrete = init_environment(env_name=args.env_name)
+    if args.her or args.pher:
+        params = get_env_params(env)
     thresh = env.spec.reward_threshold
     print("Starting training!  Need {} to solve".format(thresh))
     print(env)
@@ -154,7 +168,7 @@ def train(args):
     device = init_device()
     writer = init_logger(log_dir=args.log_dir)
 
-    sac = SAC(env, alpha=args.alpha, at=args.alph_tune, dis=discrete)
+    sac = SAC(env, alpha=args.alpha, at=args.alph_tune, dis=discrete, params=params)
     if args.continue_training:
         sac.load()
     sac.init_opt(lr=args.learning_rate)
@@ -163,8 +177,8 @@ def train(args):
     if args.per:
         replay = PrioritizedReplay(args.buff_size, sac.actor.state_space, act_size)
     elif args.her:
-        # replay = HindisightReplay()
-        print("HER not yet supported")
+        her_sample = her_sampler('future',  4, env.compute_reward)
+        replay = HindisightReplay(params, args.buff_size, her_sample)
     elif args.pher:
         # replay = PHEReplay()
         print("PHER not yet supported")
