@@ -44,6 +44,7 @@ def _parse_args():
     parser.add_argument("--per", action="store_true")
     parser.add_argument("--her", action="store_true")
     parser.add_argument("--pher", action="store_true")
+    parser.add_argument("--goal_env", action="store_true")
 
     # Training related arguments here
     parser.add_argument("--rand_seed", type=int, default=1)

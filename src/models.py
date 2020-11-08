@@ -32,15 +32,15 @@ class SAC(nn.Module):
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         if dis:
-            self.actor = DiscreteActor(env)
+            self.actor = DiscreteActor(env, params=params)
         else:
-            self.actor = Actor(env)
+            self.actor = Actor(env, params=params)
         self.actor = self.actor.to(self.device)
         self.discrete = dis
-        self.soft_q1 = SoftQNetwork(env, name="q1").to(self.device)
-        self.soft_q2 = SoftQNetwork(env, name="q2").to(self.device)
-        self.tgt_q1 = SoftQNetwork(env).eval().to(self.device)
-        self.tgt_q2 = SoftQNetwork(env).eval().to(self.device)
+        self.soft_q1 = SoftQNetwork(env, name="q1", params=params).to(self.device)
+        self.soft_q2 = SoftQNetwork(env, name="q2", params=params).to(self.device)
+        self.tgt_q1 = SoftQNetwork(env, params=params).eval().to(self.device)
+        self.tgt_q2 = SoftQNetwork(env, params=params).eval().to(self.device)
         self.gamma = gamma
         self.tau = tau
         
@@ -230,11 +230,15 @@ class SoftQNetwork(BaseNetwork):
     Q value
     """
 
-    def __init__(self, env, hidden=[256, 256], dropout=0.0, name="q1"):
+    def __init__(self, env, hidden=[256, 256], dropout=0.0, name="q1", params=None):
         super(SoftQNetwork, self).__init__()
         self.name = name
-        self.state_space = env.observation_space.shape[0]
-        self.action_space = get_action_dim(env)
+        if params is not None:
+            self.state_space = params['obs'] + params['goal']
+            self.action_space = params['action']
+        else:
+            self.state_space = env.observation_space.shape[0]
+            self.action_space = get_action_dim(env)
         self.hidden = hidden
         self.l1 = nn.Linear(self.state_space + self.action_space, hidden[0])
         self.l2 = nn.Linear(hidden[0], hidden[1])
@@ -276,11 +280,18 @@ class Actor(BaseNetwork):
         log_std_min=-20,
         log_std_max=2,
         name="sac",
+        params=None
     ):
         super(Actor, self).__init__()
         self.name = name
-        self.state_space = env.observation_space.shape[0]
-        self.action_space = get_action_dim(env)
+
+        if params is not None:
+            self.state_space = params['obs'] + params['goal']
+            self.action_space = params['action']
+        else:
+            self.state_space = env.observation_space.shape[0]
+            self.action_space = get_action_dim(env)
+
         if env.action_space is None:
             self.action_scale = torch.tensor(1.)
             self.action_bias = torch.tensor(0.)
@@ -356,12 +367,15 @@ class Actor(BaseNetwork):
         return super(Actor, self).to(device)
 
 class DiscreteActor(BaseNetwork):
-    def __init__(self, env, hidden=[256, 256], dropout=0.0, name="sac_d"):
+    def __init__(self, env, hidden=[256, 256], dropout=0.0, name="sac_d", params=None):
         super(DiscreteActor, self).__init__()
         self.name = name
-        self.state_space = env.observation_space.shape[0]
-        # always discrete, so never box
-        self.action_space = env.action_space.n
+        if params is not None:
+            self.state_space = params['obs'] + params['goal']
+            self.action_space = params['action']
+        else:
+            self.state_space = env.observation_space.shape[0]
+            self.action_space = get_action_dim(env)
         self.hidden = hidden
 
         self.l1 = nn.Linear(self.state_space, hidden[0])
