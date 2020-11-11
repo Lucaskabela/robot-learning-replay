@@ -15,33 +15,22 @@ import random
 import torch
 import torch.utils.tensorboard as tb
 from replay import ReplayBuffer, PrioritizedReplay, HindsightReplay, PHEReplay
-from utils import get_one_hot_np, NormalizedActions, her_sampler, normalizer
+from utils import get_one_hot_np, her_sampler
 
 
 def batch_to_torch_device(batch, device):
     return [torch.from_numpy(b).float().to(device) for b in batch]
 
-def preproc_inputs(state, goal, state_norm, goal_norm):
-    state = state_norm.normalize(state)
-    goal = goal_norm.normalize(goal)
+def preproc_inputs(state, goal):
     return np.concatenate((state, goal), axis=-1)
 
-def update_SAC(sac, replay, step, writer, s_norm, g_norm, batch_size=256, use_per=False, use_her=False, log_interval=20):
+def update_SAC(sac, replay, step, writer, batch_size=256, use_per=False, use_her=False, log_interval=20):
     if use_per:
         # Calculate beta depending on step
         beta = .4
         batch = replay.sample(batch_size, beta)
         batch = batch_to_torch_device(batch, sac.device)
         states, actions, reward, next_states, done, weights, idxes = batch
-    elif use_her:
-        transitions = replay.sample(batch_size)
-        states, next_states, g = transitions['obs'], transitions['obs_next'], transitions['g']
-        actions, reward = transitions['actions'], transitions['r']
-        states = preproc_inputs(states, g, s_norm, g_norm)
-        next_states = preproc_inputs(next_states, g, s_norm, g_norm)
-        batch = batch_to_torch_device((states, actions, reward, next_states), sac.device)
-        states, actions, reward, next_states = batch
-        weights, done, batch_idxes = torch.ones_like(reward), torch.zeros_like(reward), None
     else:
         batch = replay.sample(batch_size)
         batch = batch_to_torch_device(batch, sac.device)
@@ -149,9 +138,9 @@ def get_env_params(env):
     params['max_timesteps'] = env._max_episode_steps
     return params
 
-def evaluate_goal(args, env, sac, writer, step, s_norm, g_norm):
+def evaluate_goal(args, env, sac, writer, step):
     total_success_rate = []
-    for _ in range(100):
+    for _ in range(10):
         per_success_rate = []
         observation = env.reset()
         obs = observation['observation']
@@ -159,7 +148,7 @@ def evaluate_goal(args, env, sac, writer, step, s_norm, g_norm):
         done = False
         while not done:
             with torch.no_grad():
-                input_tensor = preproc_inputs(obs, g, s_norm, g_norm)
+                input_tensor = preproc_inputs(obs, g)
                 action = sac.get_action(input_tensor, eval=True)
                 # convert the actions
             observation_new, _, done, info = env.step(action)
@@ -171,7 +160,7 @@ def evaluate_goal(args, env, sac, writer, step, s_norm, g_norm):
     local_success_rate = np.mean(total_success_rate[:, -1])
     return local_success_rate
 
-def evaluate_SAC(args, env, sac, writer, step, s_norm=None, g_norm=None):
+def evaluate_SAC(args, env, sac, writer, step):
     reward_cum = 0
     done = False
     state = env.reset()
@@ -182,7 +171,7 @@ def evaluate_SAC(args, env, sac, writer, step, s_norm=None, g_norm=None):
 
     while not done:
         if args.goal_env:
-            state = preproc_inputs(obs, g, s_norm, g_norm)
+            state = preproc_inputs(obs, g)
         action = sac.get_action(state, eval=True)
         state, reward, done, _ = env.step(action)
         if args.goal_env:
@@ -192,38 +181,13 @@ def evaluate_SAC(args, env, sac, writer, step, s_norm=None, g_norm=None):
 
     return reward_cum
 
-def update_normalizer(episode_batch, sampler, s_norm, g_norm):
-    mb_obs, mb_ag, mb_g, mb_actions = episode_batch
-    mb_obs_next = mb_obs[:, 1:, :]
-    mb_ag_next = mb_ag[:, 1:, :]
-    # get the number of normalization transitions
-    num_transitions = mb_actions.shape[1]
-    # create the new buffer to store them
-    buffer_temp = {'obs': mb_obs, 
-                    'ag': mb_ag,
-                    'g': mb_g, 
-                    'actions': mb_actions, 
-                    'obs_next': mb_obs_next,
-                    'ag_next': mb_ag_next,
-                    }
-    transitions = sampler.sample_her_transitions(buffer_temp, num_transitions)
-    obs, g = transitions['obs'], transitions['g']
-    # pre process the obs and g
-    transitions['obs'], transitions['g'] = np.clip(obs, -5, 5), np.clip(g, -5, 5)
-    # update
-    s_norm.update(transitions['obs'])
-    g_norm.update(transitions['g'])
-    # recompute the stats
-    s_norm.recompute_stats()
-    g_norm.recompute_stats()
 
 def train(args):
     env, discrete = init_environment(env_name=args.env_name)
     params = None
     if args.goal_env:
         params = get_env_params(env)
-        s_norm = normalizer(size=params['obs'], default_clip_range=5)
-        g_norm = normalizer(size=params['goal'], default_clip_range=5)
+        success_rate = []
     thresh = env.spec.reward_threshold
     print("Starting training!  Need {} to solve".format(thresh))
     print(env)
@@ -253,7 +217,6 @@ def train(args):
     total_steps = 0
     updates = 0
     max_reward = -float("inf")
-
     reward_history = []
     time_steps = []
     eval_history = []
@@ -263,14 +226,13 @@ def train(args):
         done = False
         state = env.reset()
         if args.goal_env:
-            ep_obs, ep_ag, ep_g, ep_actions = [], [], [], []
             obs = state['observation']
             ag = state['achieved_goal']
             g = state['desired_goal']
         while not done:
             # If her, concatenate state and goal
             if args.goal_env:
-                state = preproc_inputs(obs, g, s_norm, g_norm)
+                state = preproc_inputs(obs, g)
 
             if total_steps < args.start_steps:
                 action = env.action_space.sample()
@@ -284,64 +246,29 @@ def train(args):
                 action = get_one_hot_np(action, sac.soft_q1.action_space)
             total_steps += 1
             episode_steps += 1
-            if args.her or args.pher:
-                episode_reward += reward
-                ep_obs.append(obs.copy())
-                ep_ag.append(ag.copy())
-                ep_g.append(g.copy())
-                ep_actions.append(action.copy())
+            episode_reward += reward
+            # Ignore done signal if it was timeout related
+            done = False if episode_steps==env._max_episode_steps else done
+            if args.goal_env:
+                next_obs = next_state['observation']
+                next_obs = preproc_inputs(next_obs, g)
+                replay.store(state, action, next_obs, reward, done)
                 obs = next_state['observation']
                 ag = next_state['achieved_goal']
             else:
-                episode_reward += reward
-                # Ignore done signal if it was timeout related
-                done = False if episode_steps==env._max_episode_steps else done
-                if args.goal_env and not (args.her or args.pher):
-                    next_obs = next_state['observation']
-                    next_obs = preproc_inputs(next_obs, g, s_norm, g_norm)
-                    replay.store(state, action, next_obs, reward, done)
-                    obs = next_state['observation']
-                    ag = next_state['achieved_goal']
-                else:
-                    replay.store(state, action, next_state, reward, done)
-                    state = next_state
+                replay.store(state, action, next_state, reward, done)
+                state = next_state
 
-                if len(replay) > args.batch_size:
-                    for i in range(args.updates_per_step):
-                        update_SAC(
-                            sac,
-                            replay,
-                            updates,
-                            writer,
-                            batch_size=args.batch_size,
-                            use_per=args.per or args.pher,
-                            use_her = args.her
-                        )
-                        updates += 1
-
-        if args.her or args.pher:
-            ep_obs.append(obs.copy())
-            ep_ag.append(ag.copy())
-            mb_obs = np.expand_dims(np.array(ep_obs), 0)
-            mb_ag = np.expand_dims(np.array(ep_ag), 0)
-            mb_g = np.expand_dims(np.array(ep_g), 0)
-            mb_actions = np.expand_dims(np.array(ep_actions), 0)
-            replay.store([mb_obs, mb_ag, mb_g, mb_actions])
-            update_normalizer([mb_obs, mb_ag, mb_g, mb_actions], her_sample, s_norm, g_norm)
             if len(replay) > args.batch_size:
-                for _ in range(args.updates_per_step):
-                    # train the network
+                for i in range(args.updates_per_step):
                     update_SAC(
-                                sac,
-                                replay,
-                                updates,
-                                writer,
-                                s_norm,
-                                g_norm,
-                                batch_size=args.batch_size,
-                                use_per=args.per or args.pher,
-                                use_her = args.her
-                            )
+                        sac,
+                        replay,
+                        updates,
+                        writer,
+                        batch_size=args.batch_size,
+                        use_per=args.per,
+                    )
                     updates += 1
 
         if i_episode % args.eval_freq == 0 and not args.goal_env:
@@ -362,11 +289,11 @@ def train(args):
                 sac.save()
             print("Avg Eval Reward {:.2f}".format(avg_reward))
             sac.train()
-        elif i_episode % args.eval_freq == 0 and len(replay) > args.batch_size:
+        elif i_episode % args.eval_freq == 0:
             print("Evaluating")
             sac.eval()
-            avg_reward = evaluate_goal(args, env, sac, writer, total_steps, s_norm, g_norm)
-            eval_history.append((i_episode / args.eval_freq, avg_reward))
+            avg_reward = evaluate_goal(args, env, sac, writer, total_steps)
+            success_rate.append((updates, avg_reward))
             if writer is not None:
                 writer.add_scalar("stats/eval_reward", avg_reward, total_steps)
             if avg_reward > max_reward:
@@ -395,8 +322,13 @@ def train(args):
             break
 
     fname = "results.out"
-    data = np.array(reward_history)
-    time = np.array(time_steps)
+    data = np.array(reward_history, dtype=np.float32)
+    time = np.array(time_steps, dtype=np.float32)
     dat = np.stack((data, time), axis=0)
     np.savetxt(fname, dat)
+
+    if args.goal_env:
+        fname = "success.out"
+        success = np.array(success_rate, dtype=np.float32)
+        np.savetxt(fname, success)
     plot_success(reward_history, time_steps)
