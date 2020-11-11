@@ -7,7 +7,7 @@ PURPOSE: This file defines the driving functions for the expirements/code
         of the project and contains the argparser
 """
 import argparse
-from train import train
+from train import train, train_goal
 
 
 def _parse_args():
@@ -54,6 +54,9 @@ def _parse_args():
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--updates_per_step", type=int, default=1)
     parser.add_argument("--start_steps", type=int, default=1000)
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--n_cycles", type=int, default=50)
+    parser.add_argument("--goal_env", action="store_true")
     parser.add_argument("--buff_size", type=int, default=100_000)
 
     args = parser.parse_args()
@@ -62,7 +65,10 @@ def _parse_args():
 
 def main():
     args = _parse_args()
-    train(args)
+    if args.goal_env:
+        train_goal(args)
+    else:
+        train(args)
 
 
 if __name__ == "__main__":

@@ -92,7 +92,7 @@ class HindsightReplay:
         temp_buffers['obs_next'] = temp_buffers['obs'][:, 1:, :]
         temp_buffers['ag_next'] = temp_buffers['ag'][:, 1:, :]
         # sample transitions
-        transitions = self.sample_func(temp_buffers, batch_size)
+        transitions = self.sample_func(temp_buffers, b_size)
         return transitions
 
     def _get_storage_idx(self, inc=None):
@@ -112,7 +112,7 @@ class HindsightReplay:
         return idx
 
     def __len__(self):
-        return self.current_size
+        return self.n_transitions_stored
 
 
 class PrioritizedReplay(ReplayBuffer):
