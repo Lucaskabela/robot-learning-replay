@@ -133,4 +133,5 @@ dmypy.json
 
 */ckpt
 */results.out
+*/success.out
 */sac.png
