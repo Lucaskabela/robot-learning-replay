@@ -15,8 +15,7 @@ import random
 import torch
 import torch.utils.tensorboard as tb
 from replay import ReplayBuffer, PrioritizedReplay, HindsightReplay, PHEReplay
-from utils import get_one_hot_np, her_sampler
-
+from utils import get_one_hot_np, her_sampler, GoalMountainCar, GoalMountainCarContinuous
 
 def batch_to_torch_device(batch, device):
     return [torch.from_numpy(b).float().to(device) for b in batch]
@@ -97,7 +96,24 @@ def init_environment(env_name):
     """
     Initialize the gym environment
     """
-    env = gym.make(env_name)
+    if env_name == "Door":
+        env = DoorWrapper(
+            suite.make(
+                "Door",
+                robots="Sawyer",                # use Sawyer robot
+                use_camera_obs=False,           # do not use pixel observations
+                has_offscreen_renderer=False,   # not needed since not using pixel obs
+                has_renderer=False,              # make sure we can render to the screen
+                reward_shaping=False,            # use dense rewards
+                control_freq=20,                # control should happen fast enough so that simulation looks smooth
+            )
+        )
+    elif env_name == "MountainCarContinuous-v0":
+        env = GoalMountainCarContinuous(gym.make(env_name))
+    elif env_name == "MountainCar-v0":
+        env = GoalMountainCar(gym.make(env_name))
+    else:
+        env = gym.make(env_name)
     discrete = isinstance(env.action_space, gym.spaces.Discrete)
     return env, discrete
 
@@ -129,12 +145,21 @@ def init_logger(log_dir=None):
 
 def get_env_params(env):
     obs = env.reset()
+    if isinstance(env, GoalMountainCar) or isinstance(env, GoalMountainCarContinuous):
+        # Cut through the wrapper
+        env = env.env
     # close the environment
+    if type(env.action_space) is gym.spaces.Box:
+        action_dim = env.action_space.shape[0]
+    else:
+        action_dim = env.action_space.n
+
     params = {'obs': obs['observation'].shape[0],
             'goal': obs['desired_goal'].shape[0],
-            'action': env.action_space.shape[0],
-            'action_max': env.action_space.high[0],
+            'action': action_dim,
             }
+    if type(env.action_space) is not gym.spaces.Discrete:
+        params['action_max'] = env.action_space.high[0]
     params['max_timesteps'] = env._max_episode_steps
     return params
 
@@ -214,6 +239,8 @@ def train(args):
         replay = ReplayBuffer(args.buff_size, sac.actor.state_space, act_size)
 
     # Need to go another level for continuous because nested
+    
+    time_limit = params['max_timesteps'] if args.goal_env else env._max_episode_steps
     total_steps = 0
     updates = 0
     max_reward = -float("inf")
@@ -229,7 +256,7 @@ def train(args):
             obs = state['observation']
             ag = state['achieved_goal']
             g = state['desired_goal']
-        while not done:
+        while not done and episode_steps < time_limit:
             # If her, concatenate state and goal
             if args.goal_env:
                 state = preproc_inputs(obs, g)
@@ -248,7 +275,8 @@ def train(args):
             episode_steps += 1
             episode_reward += reward
             # Ignore done signal if it was timeout related
-            done = False if episode_steps==env._max_episode_steps else done
+            done = False if episode_steps==time_limit else done
+
             if args.goal_env:
                 next_obs = next_state['observation']
                 next_obs = preproc_inputs(next_obs, g)
