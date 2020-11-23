@@ -52,10 +52,10 @@ def _parse_args():
     parser.add_argument("-s", "--steps", type=int, default=1_000_000)
     parser.add_argument("-lr", "--learning_rate", type=float, default=3e-4)
     parser.add_argument("-c", "--continue_training", action="store_true")
-    parser.add_argument("--batch_size", type=int, default=256)
+    parser.add_argument("--batch_size", type=int, default=512)
     parser.add_argument("--updates_per_step", type=int, default=1)
     parser.add_argument("--start_steps", type=int, default=1000)
-    parser.add_argument("--buff_size", type=int, default=100_000)
+    parser.add_argument("--buff_size", type=int, default=50_000)
 
     args = parser.parse_args()
     return args

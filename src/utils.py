@@ -153,16 +153,20 @@ class GoalMountainCar(gym.Wrapper):
         return state
 
     def compute_reward(self, achieved_goal, desired_goal, info):
+        shape = False
+        dense = 100*((math.sin(3*achieved_goal[0,0]) * 0.0025 + 0.5 * achieved_goal[0,1] * achieved_goal[0,1]) - (math.sin(3*desired_goal[0,0]) * 0.0025 + 0.5 * desired_goal[0,1] * desired_goal[0,1])) 
         if achieved_goal[0] != desired_goal[0]:
-            return -1
+            return -1 if not shape else dense
         else:
-            return 0 if achieved_goal[0] >= desired_goal[0] else -1
+            return 0 if achieved_goal[0] >= desired_goal[0] else (-1 if not shape else dense)
 
     def step(self, action):
-        state, reward, done, info = super().step(action)
+        state, _, done, info = super().step(action)
         ag = np.array(self.env.state)
         g = np.array([self.env.goal_position, self.env.goal_velocity])
+        reward = self.compute_reward(ag, g, info)
         state = {'observation': state, 'achieved_goal': ag, 'desired_goal': g}
+        info['is_success'] = reward==0
         return state, reward, done, info
 
 class GoalMountainCarContinuous(gym.Wrapper):
@@ -175,10 +179,13 @@ class GoalMountainCarContinuous(gym.Wrapper):
         return state
 
     def compute_reward(self, achieved_goal, desired_goal, info):
+        shape = False
+        dense = 100*((math.sin(3*achieved_goal[0,0]) * 0.0025 + 0.5 * achieved_goal[0,1] * achieved_goal[0,1]) - (math.sin(3*desired_goal[0,0]) * 0.0025 + 0.5 * desired_goal[0,1] * desired_goal[0,1])) 
         if achieved_goal[0] != desired_goal[0]:
-            return -1
+            return -1 if not shape else dense
         else:
-            return 0 if achieved_goal[0] >= desired_goal[0] else -1
+            return 0 if achieved_goal[0] >= desired_goal[0] else (-1 if not shape else dense)
+
 
     def step(self, action):
         state, _, done, info = super().step(action)
@@ -186,6 +193,7 @@ class GoalMountainCarContinuous(gym.Wrapper):
         g = np.array([self.env.goal_position, self.env.goal_velocity])
         reward = self.compute_reward(ag, g, None)
         state = {'observation': state, 'achieved_goal': ag, 'desired_goal': g}
+        info['is_success'] = ag[0] == g[0]
         return state, reward, done, info
 
 # Taken from https://github.com/vaishak2future/sac/blob/master/sac.ipynb

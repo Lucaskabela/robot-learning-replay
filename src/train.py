@@ -26,8 +26,7 @@ def preproc_inputs(state, goal):
 def update_SAC(sac, replay, step, writer, batch_size=256, use_per=False, use_her=False, log_interval=20):
     if use_per:
         # Calculate beta depending on step
-        beta = .4
-        batch = replay.sample(batch_size, beta)
+        batch = replay.sample(batch_size)
         batch = batch_to_torch_device(batch, sac.device)
         states, actions, reward, next_states, done, weights, idxes = batch
     else:
@@ -246,6 +245,7 @@ def train(args):
     max_reward = -float("inf")
     reward_history = []
     time_steps = []
+    updates_history = []
     eval_history = []
     for i_episode in itertools.count(1):
         episode_reward = 0
@@ -321,7 +321,8 @@ def train(args):
             print("Evaluating")
             sac.eval()
             avg_reward = evaluate_goal(args, env, sac, writer, total_steps)
-            success_rate.append((updates, avg_reward))
+            success_rate.append(avg_reward)
+            updates_history.append(updates)
             if writer is not None:
                 writer.add_scalar("stats/eval_reward", avg_reward, total_steps)
             if avg_reward > max_reward:
@@ -358,5 +359,7 @@ def train(args):
     if args.goal_env:
         fname = "success.out"
         success = np.array(success_rate, dtype=np.float32)
-        np.savetxt(fname, success)
+        updates = np.array(updates_history, dtype=np.float32)
+        dat = np.stack((success, updates), axis=0)
+        np.savetxt(fname, dat)
     plot_success(reward_history, time_steps)

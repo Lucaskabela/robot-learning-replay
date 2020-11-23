@@ -123,7 +123,7 @@ class SAC(nn.Module):
         p_q2 = self.soft_q2(states, actions)
 
         # Take the largest state errors
-        errors = torch.abs(torch.max(target_q_value - p_q1, target_q_value - p_q2)).detach()
+        errors = (weights * (torch.abs(target_q_value - p_q1) + torch.abs(target_q_value - p_q2)) / 2).detach()
 
         # MSE Loss, but weighted with importance sample weights
         q_value_loss1 = ((weights * (p_q1 - target_q_value))**2).mean()

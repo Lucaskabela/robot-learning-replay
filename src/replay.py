@@ -117,9 +117,10 @@ class HindsightReplay:
 
 class PrioritizedReplay(ReplayBuffer):
     # From https://github.com/openai/baselines/blob/master/baselines/deepq/replay_buffer.py
-    def __init__(self, buf_size, in_shape, action_d, alpha=.6):
+    def __init__(self, buf_size, in_shape, action_d, alpha=.6, beta=.6):
         super(PrioritizedReplay, self).__init__(buf_size, in_shape, action_d)
         self.alpha = alpha
+        self.beta = beta
         it_capacity = 1
         while it_capacity < buf_size:
             it_capacity *= 2
@@ -147,7 +148,10 @@ class PrioritizedReplay(ReplayBuffer):
             res.append(idx)
         return res
 
-    def sample(self, b_size=256, beta=.4):
+    def sample(self, b_size=256):
+        beta = self.beta
+        # Anneal beta
+        self.beta = min(self.beta + .0001, 1)
         batch_idxes = self._sample_prop(b_size)
         upper = min(self.buf_size, self.num_added) - 1
         weights = np.zeros(b_size)
