@@ -7,6 +7,7 @@ PURPOSE: This file defines the various datastructures and utility functions
         used in this project
 """
 import gym
+import math
 import numpy as np
 import operator
 import torch
@@ -154,7 +155,7 @@ class GoalMountainCar(gym.Wrapper):
 
     def compute_reward(self, achieved_goal, desired_goal, info):
         shape = False
-        dense = 100*((math.sin(3*achieved_goal[0,0]) * 0.0025 + 0.5 * achieved_goal[0,1] * achieved_goal[0,1]) - (math.sin(3*desired_goal[0,0]) * 0.0025 + 0.5 * desired_goal[0,1] * desired_goal[0,1])) 
+        dense = 100*((math.sin(3*achieved_goal[0]) * 0.0025 + 0.5 * achieved_goal[1] * achieved_goal[1]) - (math.sin(3*desired_goal[0]) * 0.0025 + 0.5 * desired_goal[1] * desired_goal[1])) 
         if achieved_goal[0] != desired_goal[0]:
             return -1 if not shape else dense
         else:
@@ -180,7 +181,7 @@ class GoalMountainCarContinuous(gym.Wrapper):
 
     def compute_reward(self, achieved_goal, desired_goal, info):
         shape = False
-        dense = 100*((math.sin(3*achieved_goal[0,0]) * 0.0025 + 0.5 * achieved_goal[0,1] * achieved_goal[0,1]) - (math.sin(3*desired_goal[0,0]) * 0.0025 + 0.5 * desired_goal[0,1] * desired_goal[0,1])) 
+        dense = 100*((math.sin(3*achieved_goal[0]) * 0.0025 + 0.5 * achieved_goal[1] * achieved_goal[1]) - (math.sin(3*desired_goal[0]) * 0.0025 + 0.5 * desired_goal[1] * desired_goal[1])) 
         if achieved_goal[0] != desired_goal[0]:
             return -1 if not shape else dense
         else:
