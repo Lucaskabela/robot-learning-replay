@@ -22,10 +22,10 @@ def _parse_args():
     )
     parser.add_argument(
         "--files", 
-        default=["../results/mainruns/fetchpush_v1/fetchpush_er_results.out", 
-            "../results/mainruns/fetchpush_v1/fetchpush_per_results.out",
-            "../results/mainruns/fetchpush_v1/fetchpush_her_results.csv",
-            "../results/mainruns/fetchpush_v1/fetchpush_pher_results.csv"
+        default=["../results/hyperparams/mountaincarcontinuous_v0/results_er_50k_64.out",
+                "../results/hyperparams/mountaincarcontinuous_v0/results_er_50k_64.out", 
+                 "../results/hyperparams/mountaincarcontinuous_v0/results_her_50k_512.csv",
+                 "../results/hyperparams/mountaincarcontinuous_v0/results_her_50k_512.csv",
         ])
     parser.add_argument("--goal", action='store_true')
 
@@ -38,12 +38,11 @@ def load_csv(filename, solved_goal=.25):
     with open(filename, 'r') as f:
         df = pd.read_csv(f)
         returns = df['evaluation/Returns Mean'].to_numpy()
-        success = df['evaluation/env_infos/is_success Mean'].to_numpy()
+        success = df['evaluation/env_infos/final/is_success Mean'].to_numpy()
         updates = df['trainer/num train calls'].to_numpy()
         returns = returns[~np.isnan(returns)]
         success = success[~np.isnan(success)]
-        updates = updates[~np.isnan(updates)]           
-        print(len(returns))
+        updates = updates[~np.isnan(updates)]
         print("Max return: ", max(returns))
         print("Max success rate: ", max(success))
         for idx, val in enumerate(success):
@@ -54,7 +53,7 @@ def load_csv(filename, solved_goal=.25):
         return returns, updates, success, updates
 
 
-def load_out(filename, solved_threshold=-10, solved_goal=.25, goal_env=False):
+def load_out(filename, solved_threshold=-.1, solved_goal=.25, goal_env=False):
     print(filename)
     with open(filename, "r") as f:
         lines = f.readlines()
@@ -68,7 +67,7 @@ def load_out(filename, solved_threshold=-10, solved_goal=.25, goal_env=False):
                 break
 
     if goal_env:
-        filename2 = filename[:-11] + "success" + filename[-4:]
+        filename2 = filename[:11] + filename[11:].replace("results", "success")
         with open(filename2, "r") as f:
             lines = f.readlines()
             success_rate = [float(n) for n in lines[0].strip().split()]
@@ -94,7 +93,6 @@ def plot_returns(returns, time_steps):
     for idx, cl in enumerate(returns):
         rolling_mean = pd.Series(returns[idx]).rolling(window).mean()
         std = pd.Series(returns[idx]).rolling(window).std()
-        print(len(time_steps[idx]))
         plt.plot(
             time_steps[idx], 
             rolling_mean,
@@ -108,7 +106,7 @@ def plot_returns(returns, time_steps):
             color=scalarMap.to_rgba(idx),
             alpha=0.1,            
         )
-    plt.title("Return Moving Average over Learning Updates")
+    plt.title("MountainCar-v0: Batch Size 512, Buffer Size 50,00")
     plt.xlabel("Learning Update Step")
     plt.ylabel('Average Return')
     plt.legend(loc='upper left')
@@ -132,14 +130,14 @@ def plot_successes(successes, time_steps):
             color=scalarMap.to_rgba(idx),
             label=labels[idx]
         )
-        # plt.fill_between(
-        #     time_steps[idx],
-        #     rolling_mean - std,
-        #     rolling_mean + std,
-        #     color=scalarMap.to_rgba(idx),
-        #     alpha=0.1,            
-        # )
-    plt.title("Return Success Rate over Learning Updates")
+        plt.fill_between(
+            time_steps[idx],
+            rolling_mean - std,
+            rolling_mean + std,
+            color=scalarMap.to_rgba(idx),
+            alpha=0.1,            
+        )
+    plt.title("MountainCar-v0: Batch Size 512, Buffer Size 50,00")
     plt.xlabel("Learning Update Step")
     plt.ylabel('Success Rate')
     plt.legend(loc='upper left')
@@ -168,7 +166,6 @@ def main():
         if args.goal:
             successes.append(s)
             updates_succ.append(us)
-
     plot_returns(returns, updates_returns)
     if args.goal:
         plot_successes(successes, updates_succ)
